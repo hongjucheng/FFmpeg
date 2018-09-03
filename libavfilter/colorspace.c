@@ -17,10 +17,14 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
+#include "libavutil/frame.h"
+#include "libavutil/mastering_display_metadata.h"
+#include "libavutil/pixdesc.h"
+
 #include "colorspace.h"
 
 
-void invert_matrix3x3(const double in[3][3], double out[3][3])
+void ff_matrix_invert_3x3(const double in[3][3], double out[3][3])
 {
     double m00 = in[0][0], m01 = in[0][1], m02 = in[0][2],
            m10 = in[1][0], m11 = in[1][1], m12 = in[1][2],
@@ -47,7 +51,8 @@ void invert_matrix3x3(const double in[3][3], double out[3][3])
     }
 }
 
-void mul3x3(double dst[3][3], const double src1[3][3], const double src2[3][3])
+void ff_matrix_mul_3x3(double dst[3][3],
+               const double src1[3][3], const double src2[3][3])
 {
     int m, n;
 
@@ -60,9 +65,9 @@ void mul3x3(double dst[3][3], const double src1[3][3], const double src2[3][3])
 /*
  * see e.g. http://www.brucelindbloom.com/index.html?Eqn_RGB_XYZ_Matrix.html
  */
-void fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
-                        const struct WhitepointCoefficients *wp,
-                        double rgb2xyz[3][3])
+void ff_fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
+                           const struct WhitepointCoefficients *wp,
+                           double rgb2xyz[3][3])
 {
     double i[3][3], sr, sg, sb, zw;
 
@@ -73,7 +78,7 @@ void fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
     rgb2xyz[2][0] = (1.0 - coeffs->xr - coeffs->yr) / coeffs->yr;
     rgb2xyz[2][1] = (1.0 - coeffs->xg - coeffs->yg) / coeffs->yg;
     rgb2xyz[2][2] = (1.0 - coeffs->xb - coeffs->yb) / coeffs->yb;
-    invert_matrix3x3(rgb2xyz, i);
+    ff_matrix_invert_3x3(rgb2xyz, i);
     zw = 1.0 - wp->xw - wp->yw;
     sr = i[0][0] * wp->xw + i[0][1] * wp->yw + i[0][2] * zw;
     sg = i[1][0] * wp->xw + i[1][1] * wp->yw + i[1][2] * zw;
@@ -87,4 +92,46 @@ void fill_rgb2xyz_table(const struct PrimaryCoefficients *coeffs,
     rgb2xyz[2][0] *= sr;
     rgb2xyz[2][1] *= sg;
     rgb2xyz[2][2] *= sb;
+}
+
+double ff_determine_signal_peak(AVFrame *in)
+{
+    AVFrameSideData *sd = av_frame_get_side_data(in, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+    double peak = 0;
+
+    if (sd) {
+        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
+        peak = clm->MaxCLL / REFERENCE_WHITE;
+    }
+
+    sd = av_frame_get_side_data(in, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (!peak && sd) {
+        AVMasteringDisplayMetadata *metadata = (AVMasteringDisplayMetadata *)sd->data;
+        if (metadata->has_luminance)
+            peak = av_q2d(metadata->max_luminance) / REFERENCE_WHITE;
+    }
+
+    // For untagged source, use peak of 10000 if SMPTE ST.2084
+    // otherwise assume HLG with reference display peak 1000.
+    if (!peak)
+        peak = in->color_trc == AVCOL_TRC_SMPTE2084 ? 100.0f : 10.0f;
+
+    return peak;
+}
+
+void ff_update_hdr_metadata(AVFrame *in, double peak)
+{
+    AVFrameSideData *sd = av_frame_get_side_data(in, AV_FRAME_DATA_CONTENT_LIGHT_LEVEL);
+
+    if (sd) {
+        AVContentLightMetadata *clm = (AVContentLightMetadata *)sd->data;
+        clm->MaxCLL = (unsigned)(peak * REFERENCE_WHITE);
+    }
+
+    sd = av_frame_get_side_data(in, AV_FRAME_DATA_MASTERING_DISPLAY_METADATA);
+    if (sd) {
+        AVMasteringDisplayMetadata *metadata = (AVMasteringDisplayMetadata *)sd->data;
+        if (metadata->has_luminance)
+            metadata->max_luminance = av_d2q(peak * REFERENCE_WHITE, 10000);
+    }
 }
