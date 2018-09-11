@@ -451,6 +451,7 @@ enum AVCodecID {
     AV_CODEC_ID_PROSUMER,
     AV_CODEC_ID_MWSC,
     AV_CODEC_ID_WCMV,
+    AV_CODEC_ID_RASC,
 
     /* various PCM "codecs" */
     AV_CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -1363,6 +1364,12 @@ enum AVPacketSideDataType {
      * The format is not part of ABI, use av_encryption_info_* methods to access.
      */
     AV_PKT_DATA_ENCRYPTION_INFO,
+
+    /**
+     * Active Format Description data consisting of a single byte as specified
+     * in ETSI TS 101 154 using AVActiveFormatDescription enum.
+     */
+    AV_PKT_DATA_AFD,
 
     /**
      * The number of side data types.

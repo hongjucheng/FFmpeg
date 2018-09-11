@@ -21,6 +21,11 @@ version <next>:
 - Brooktree ProSumer video decoder
 - MatchWare Screen Capture Codec decoder
 - WinCam Motion Video decoder
+- 1D LUT filter (lut1d)
+- RemotelyAnywhere Screen Capture decoder
+- cue and acue filters
+- support for AV1 in MP4
+- transpose_npp filter
 
 
 version 4.0:
