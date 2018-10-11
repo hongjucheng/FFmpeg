@@ -955,6 +955,8 @@ select inverted half of sine wave
 select double-exponential seat
 @item desi
 select double-exponential sigmoid
+@item losi
+select logistic sigmoid
 @end table
 @end table
 
@@ -1147,7 +1149,7 @@ afftfilt="1-clip((b/nb)*b,0,1)"
 Apply an arbitrary Frequency Impulse Response filter.
 
 This filter is designed for applying long FIR filters,
-up to 30 seconds long.
+up to 60 seconds long.
 
 It can be used as component for digital crossover filters,
 room equalization, cross talk cancellation, wavefield synthesis,
@@ -1171,8 +1173,32 @@ Set wet gain. This sets final output gain.
 @item length
 Set Impulse Response filter length. Default is 1, which means whole IR is processed.
 
-@item again
+@item gtype
 Enable applying gain measured from power of IR.
+
+Set which approach to use for auto gain measurement.
+
+@table @option
+@item none
+Do not apply any gain.
+
+@item peak
+select peak gain, very conservative approach. This is default value.
+
+@item dc
+select DC gain, limited application.
+
+@item gn
+select gain to noise approach, this is most popular one.
+@end table
+
+@item irgain
+Set gain to be applied to IR coefficients before filtering.
+Allowed range is 0 to 1. This can be set even with @var{again} used.
+
+@item irfmt
+Set format of IR stream. Can be @code{mono} or @code{input}.
+Default is @code{input}.
 
 @item maxir
 Set max allowed Impulse Response filter duration in seconds. Default is 30 seconds.
@@ -19256,7 +19282,11 @@ time graph to observe the loudness evolution. The graphic contains the logged
 message mentioned above, so it is not printed anymore when this option is set,
 unless the verbose logging is set. The main graphing area contains the
 short-term loudness (3 seconds of analysis), and the gauge on the right is for
-the momentary loudness (400 milliseconds).
+the momentary loudness (400 milliseconds), but can optionally be configured
+to instead display short-term loudness (see @var{gauge}).
+
+The green area marks a  +/- 1LU target range around the target loudness
+(-23LUFS by default, unless modified through @var{target}).
 
 More information about the Loudness Recommendation EBU R128 on
 @url{http://tech.ebu.ch/loudness}.
@@ -19333,6 +19363,23 @@ Multi-channel input files are not affected by this option.
 @item panlaw
 Set a specific pan law to be used for the measurement of dual mono files.
 This parameter is optional, and has a default value of -3.01dB.
+
+@item target
+Set a specific target level (in LUFS) used as relative zero in the visualization.
+This parameter is optional and has a default value of -23LUFS as specified
+by EBU R128. However, material published online may prefer a level of -16LUFS
+(e.g. for use with podcasts or video platforms).
+
+@item gauge
+Set the value displayed by the gauge. Valid values are @code{momentary} and s
+@code{shortterm}. By default the momentary value will be used, but in certain
+scenarios it may be more useful to observe the short term value instead (e.g.
+live mixing).
+
+@item scale
+Sets the display scale for the loudness. Valid parameters are @code{absolute}
+(in LUFS) or @code{relative} (LU) relative to the target. This only affects the
+video output, not the summary or continuous log output.
 @end table
 
 @subsection Examples
@@ -20617,6 +20664,8 @@ each channel is displayed using the fruit color scheme
 each channel is displayed using the cool color scheme
 @item magma
 each channel is displayed using the magma color scheme
+@item green
+each channel is displayed using the green color scheme
 @end table
 
 Default value is @samp{channel}.
@@ -20696,6 +20745,18 @@ Set which data to display. Can be @code{magnitude}, default or @code{phase}.
 @item rotation
 Set color rotation, must be in [-1.0, 1.0] range.
 Default value is @code{0}.
+
+@item start
+Set start frequency from which to display spectrogram. Default is @code{0}.
+
+@item stop
+Set stop frequency to which to display spectrogram. Default is @code{0}.
+
+@item fps
+Set upper frame rate limit. Default is @code{auto}, unlimited.
+
+@item legend
+Draw time and frequency axes and legends. Default is disabled.
 @end table
 
 The usage is very similar to the showwaves filter; see the examples in that
@@ -20768,6 +20829,8 @@ each channel is displayed using the fruit color scheme
 each channel is displayed using the cool color scheme
 @item magma
 each channel is displayed using the magma color scheme
+@item green
+each channel is displayed using the green color scheme
 @end table
 Default value is @samp{intensity}.
 
@@ -20839,6 +20902,12 @@ Draw time and frequency axes and legends. Default is enabled.
 @item rotation
 Set color rotation, must be in [-1.0, 1.0] range.
 Default value is @code{0}.
+
+@item start
+Set start frequency from which to display spectrogram. Default is @code{0}.
+
+@item stop
+Set stop frequency to which to display spectrogram. Default is @code{0}.
 @end table
 
 @subsection Examples
