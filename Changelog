@@ -33,6 +33,12 @@ version <next>:
 - ilbc decoder
 - audio denoiser as afftdn filter
 - AV1 parser
+- SER demuxer
+- sinc audio filter source
+- chromahold filter
+- setparams filter
+- vibrance filter
+- decoding S12M timecode in h264
 
 
 version 4.0:
