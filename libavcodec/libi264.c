@@ -45,6 +45,9 @@ typedef struct I264Context {
     int             sei_size;
 
     int             keyint;
+    int             c_qp;
+    int             csp;
+    char            *additional_opt;
 } I264Context;
 
 static int encode_nals(AVCodecContext *ctx, AVPacket *pkt,
@@ -223,9 +226,14 @@ static av_cold int I264_init(AVCodecContext *avctx)
     }
     i4->configs.num_thread = 0;
 
+    i4->configs.c_qp = i4->c_qp;
+    i4->configs.csp  = i4->csp;
+    i4->configs.additional_opt = i4->additional_opt;
+
     av_log(avctx, AV_LOG_INFO, "Dump libi264 config values: \n");
     av_log(avctx, AV_LOG_INFO, "width: %d, height: %d, profile: %d, bitrate: %d(kbps), frame_rate: %d, keyint_max: %d, repeat_header: %d, num_thread: %d\n", 
     i4->configs.width, i4->configs.height, i4->configs.profile, i4->configs.bitrate, i4->configs.frame_rate, i4->configs.keyint_max, i4->configs.repeat_header, i4->configs.num_thread);
+    av_log(avctx, AV_LOG_INFO, "c_qp: %d, csp: %d, additional_opt: %s\n", i4->configs.c_qp, i4->configs.csp, i4->configs.additional_opt);
 
     i4->enc = x264_init(&i4->configs);
     if (!i4->enc)
@@ -323,7 +331,10 @@ static av_cold void I264_init_static(AVCodec *codec)
 #define OFFSET(x) offsetof(I264Context, x)
 #define VE AV_OPT_FLAG_VIDEO_PARAM | AV_OPT_FLAG_ENCODING_PARAM
 static const AVOption options[] = {
-    { "keyint", "keyframe interval", OFFSET(keyint), AV_OPT_TYPE_INT,  {.i64 = 3 }, 1, UINT64_MAX, VE },
+    { "keyint"      , "keyframe interval", OFFSET(keyint)        , AV_OPT_TYPE_INT   ,  {.i64 = 75 }            , 1, UINT64_MAX, VE },
+    { "c_qp"        , "c_qp"             , OFFSET(c_qp)          , AV_OPT_TYPE_INT   ,  {.i64 = 22 }            , 1, UINT64_MAX, VE },
+    { "csp"         , "csp"              , OFFSET(csp)           , AV_OPT_TYPE_INT   ,  {.i64 = X264_CSP_I420 } , 1, UINT64_MAX, VE },
+    { "i264-params" , "additional opts"  , OFFSET(additional_opt), AV_OPT_TYPE_STRING,  {0}                     , 0, 0         , VE },
     { NULL },
 };
 
