@@ -6184,7 +6184,7 @@ enabled libx264           && { check_pkg_config libx264 x264 "stdint.h x264.h" x
 enabled libi264           && { check_pkg_config libi264 i264 "stdint.h i264.h" x264_encoder_encode ||
                                { require libi264 "stdint.h i264.h" x264_encoder_encode "-li264 $pthreads_extralibs $libm_extralibs" &&
                                  warn "using libi264 without pkg-config"; } } &&
-                             require_cpp_condition i264.h "X264_BUILD >= 118"
+                             require_cpp_condition libi264 i264.h "X264_BUILD >= 118"
 enabled libx265           && require_pkg_config libx265 x265 x265.h x265_api_get &&
                              require_cpp_condition libx265 x265.h "X265_BUILD >= 68"
 enabled libxavs           && require libxavs "stdint.h xavs.h" xavs_encoder_encode "-lxavs $pthreads_extralibs $libm_extralibs"
