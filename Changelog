@@ -10,6 +10,9 @@ version <next>:
 - truehd_core bitstream filter
 - dhav demuxer
 - PCM-DVD encoder
+- GIF parser
+- vividas demuxer
+- hymt decoder
 
 
 version 4.1:
