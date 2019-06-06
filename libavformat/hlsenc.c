@@ -1830,7 +1830,7 @@ static int parse_variant_stream_mapstring(AVFormatContext *s)
     /**
      * Expected format for var_stream_map string is as below:
      * "a:0,v:0 a:1,v:1"
-     * "a:0,agroup:a0,default:1,language:ENG a:1,agroup:a1,defalut:0 v:0,agroup:a0  v:1,agroup:a1"
+     * "a:0,agroup:a0,default:1,language:ENG a:1,agroup:a1,default:0 v:0,agroup:a0  v:1,agroup:a1"
      * This string specifies how to group the audio, video and subtitle streams
      * into different variant streams. The variant stream groups are separated
      * by space.
@@ -2241,6 +2241,7 @@ static int hls_write_packet(AVFormatContext *s, AVPacket *pkt)
 
         new_start_pos = avio_tell(vs->avf->pb);
         if (hls->segment_type != SEGMENT_TYPE_FMP4) {
+            avio_flush(oc->pb);
             vs->size = new_start_pos - vs->start_pos;
         } else {
             vs->size = new_start_pos;
