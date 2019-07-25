@@ -196,19 +196,19 @@ static av_cold int I264_init(AVCodecContext *avctx)
     i4->configs.width  = avctx->width;
     i4->configs.height = avctx->height;
     if (avctx->height <= 180) {
-        i4->configs.profile = PROFILE_ZHIBO_320x180;
+        i4->configs.profile = PROFILE_STORE_320x180;
     } else if(avctx->height <= 240){
-        i4->configs.profile = PROFILE_ZHIBO_320x240;
+        i4->configs.profile = PROFILE_STORE_320x240;
     } else if(avctx->height <= 480){
-        i4->configs.profile = PROFILE_ZHIBO_640x480;
+        i4->configs.profile = PROFILE_STORE_640x480;
     } else if(avctx->height <= 540 && avctx->width < 960){
-        i4->configs.profile = PROFILE_ZHIBO_720x540;
+        i4->configs.profile = PROFILE_STORE_720x540;
     } else if(avctx->height <= 540 && avctx->width < 1280){
-        i4->configs.profile = PROFILE_ZHIBO_960x540;
+        i4->configs.profile = PROFILE_STORE960x540;
     } else if(avctx->height <= 720){
-        i4->configs.profile = PROFILE_ZHIBO_1280x720;
+        i4->configs.profile = PROFILE_STORE_1280x720;
     } else {
-        i4->configs.profile = PROFILE_ZHIBO_1920x1080;
+        i4->configs.profile = PROFILE_STORE_1920x1080;
     }
 
     i4->configs.bitrate = avctx->bit_rate / 1000;
@@ -225,6 +225,7 @@ static av_cold int I264_init(AVCodecContext *avctx)
         i4->configs.repeat_header = 0;
     }
     i4->configs.num_thread = 0;
+    i4->configs.bit_depth  = 8;
 
     i4->configs.c_qp = i4->c_qp;
     i4->configs.csp  = i4->csp;
