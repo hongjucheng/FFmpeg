@@ -93,6 +93,7 @@ extern AVFilter ff_af_compensationdelay;
 extern AVFilter ff_af_crossfeed;
 extern AVFilter ff_af_crystalizer;
 extern AVFilter ff_af_dcshift;
+extern AVFilter ff_af_deesser;
 extern AVFilter ff_af_drmeter;
 extern AVFilter ff_af_dynaudnorm;
 extern AVFilter ff_af_earwax;
@@ -142,6 +143,7 @@ extern AVFilter ff_asrc_sine;
 
 extern AVFilter ff_asink_anullsink;
 
+extern AVFilter ff_vf_addroi;
 extern AVFilter ff_vf_alphaextract;
 extern AVFilter ff_vf_alphamerge;
 extern AVFilter ff_vf_amplify;
@@ -196,6 +198,7 @@ extern AVFilter ff_vf_deinterlace_vaapi;
 extern AVFilter ff_vf_dejudder;
 extern AVFilter ff_vf_delogo;
 extern AVFilter ff_vf_denoise_vaapi;
+extern AVFilter ff_vf_derain;
 extern AVFilter ff_vf_deshake;
 extern AVFilter ff_vf_despill;
 extern AVFilter ff_vf_detelecine;

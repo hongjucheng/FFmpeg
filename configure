@@ -323,6 +323,7 @@ External library support:
   --disable-amf            disable AMF video encoding code [autodetect]
   --disable-audiotoolbox   disable Apple AudioToolbox code [autodetect]
   --enable-cuda-nvcc       enable Nvidia CUDA compiler [no]
+  --disable-cuda-llvm      disable CUDA compilation using clang [autodetect]
   --disable-cuvid          disable Nvidia CUVID support [autodetect]
   --disable-d3d11va        disable Microsoft Direct3D 11 video acceleration code [autodetect]
   --disable-dxva2          disable Microsoft DirectX 9 video acceleration code [autodetect]
@@ -371,7 +372,7 @@ Toolchain options:
   --cxx=CXX                use C compiler CXX [$cxx_default]
   --objcc=OCC              use ObjC compiler OCC [$cc_default]
   --dep-cc=DEPCC           use dependency generator DEPCC [$cc_default]
-  --nvcc=NVCC              use Nvidia CUDA compiler NVCC [$nvcc_default]
+  --nvcc=NVCC              use Nvidia CUDA compiler NVCC or clang [$nvcc_default]
   --ld=LD                  use linker LD [$ld_default]
   --pkg-config=PKGCONFIG   use pkg-config tool PKGCONFIG [$pkg_config_default]
   --pkg-config-flags=FLAGS pass additional flags to pkgconf []
@@ -442,6 +443,7 @@ Optimization options (experts only):
   --disable-mipsdsp        disable MIPS DSP ASE R1 optimizations
   --disable-mipsdspr2      disable MIPS DSP ASE R2 optimizations
   --disable-msa            disable MSA optimizations
+  --disable-msa2           disable MSA2 optimizations
   --disable-mipsfpu        disable floating point MIPS optimizations
   --disable-mmi            disable Loongson SIMD optimizations
   --disable-fast-unaligned consider unaligned accesses slow
@@ -1038,12 +1040,16 @@ test_nvcc(){
     tmpcu_=$TMPCU
     tmpo_=$TMPO
     [ -x "$(command -v cygpath)" ] && tmpcu_=$(cygpath -m $tmpcu_) && tmpo_=$(cygpath -m $tmpo_)
-    test_cmd $nvcc -ptx $NVCCFLAGS "$@" $NVCC_C $(nvcc_o $tmpo_) $tmpcu_
+    test_cmd $nvcc $nvccflags "$@" $NVCC_C $(nvcc_o $tmpo_) $tmpcu_
 }
 
 check_nvcc() {
     log check_nvcc "$@"
-    test_nvcc <<EOF
+    name=$1
+    shift 1
+    disabled $name && return
+    disable $name
+    test_nvcc "$@" <<EOF && enable $name
 extern "C" {
     __global__ void hello(unsigned char *data) {}
 }
@@ -1815,6 +1821,7 @@ HWACCEL_AUTODETECT_LIBRARY_LIST="
     audiotoolbox
     crystalhd
     cuda
+    cuda_llvm
     cuvid
     d3d11va
     dxva2
@@ -2001,6 +2008,7 @@ ARCH_EXT_LIST_MIPS="
     mipsdsp
     mipsdspr2
     msa
+    msa2
 "
 
 ARCH_EXT_LIST_LOONGSON="
@@ -2262,6 +2270,9 @@ TOOLCHAIN_FEATURES="
 TYPES_LIST="
     kCMVideoCodecType_HEVC
     kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange
+    kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ
+    kCVImageBufferTransferFunction_ITU_R_2100_HLG
+    kCVImageBufferTransferFunction_Linear
     socklen_t
     struct_addrinfo
     struct_group_source_req
@@ -2529,6 +2540,7 @@ mipsdsp_deps="mips"
 mipsdspr2_deps="mips"
 mmi_deps="mips"
 msa_deps="mipsfpu"
+msa2_deps="msa"
 
 cpunop_deps="i686"
 x86_64_select="i686"
@@ -2588,8 +2600,8 @@ threads_if_any="$THREADS_LIST"
 
 # subsystems
 cbs_av1_select="cbs"
-cbs_h264_select="cbs golomb"
-cbs_h265_select="cbs golomb"
+cbs_h264_select="cbs"
+cbs_h265_select="cbs"
 cbs_jpeg_select="cbs"
 cbs_mpeg2_select="cbs"
 cbs_vp9_select="cbs"
@@ -2827,6 +2839,7 @@ vc1image_decoder_select="vc1_decoder"
 vorbis_decoder_select="mdct"
 vorbis_encoder_select="audio_frame_queue mdct"
 vp3_decoder_select="hpeldsp vp3dsp videodsp"
+vp4_decoder_select="vp3_decoder"
 vp5_decoder_select="h264chroma hpeldsp videodsp vp3dsp vp56dsp"
 vp6_decoder_select="h264chroma hpeldsp huffman videodsp vp3dsp vp56dsp"
 vp6a_decoder_select="vp6_decoder"
@@ -2985,8 +2998,10 @@ v4l2_m2m_deps="linux_videodev2_h sem_timedwait"
 
 hwupload_cuda_filter_deps="ffnvcodec"
 scale_npp_filter_deps="ffnvcodec libnpp"
-scale_cuda_filter_deps="ffnvcodec cuda_nvcc"
-thumbnail_cuda_filter_deps="ffnvcodec cuda_nvcc"
+scale_cuda_filter_deps="ffnvcodec"
+scale_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
+thumbnail_cuda_filter_deps="ffnvcodec"
+thumbnail_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
 transpose_npp_filter_deps="ffnvcodec libnpp"
 
 amf_deps_any="libdl LoadLibrary"
@@ -3438,6 +3453,7 @@ deinterlace_qsv_filter_deps="libmfx"
 deinterlace_vaapi_filter_deps="vaapi"
 delogo_filter_deps="gpl"
 denoise_vaapi_filter_deps="vaapi"
+derain_filter_select="dnn"
 deshake_filter_select="pixelutils"
 dilation_opencl_filter_deps="opencl"
 drawtext_filter_deps="libfreetype"
@@ -3545,7 +3561,8 @@ zscale_filter_deps="libzimg const_nan"
 scale_vaapi_filter_deps="vaapi"
 vpp_qsv_filter_deps="libmfx"
 vpp_qsv_filter_select="qsvvpp"
-yadif_cuda_filter_deps="ffnvcodec cuda_nvcc"
+yadif_cuda_filter_deps="ffnvcodec"
+yadif_cuda_filter_deps_any="cuda_nvcc cuda_llvm"
 
 # examples
 avio_dir_cmd_deps="avformat avutil"
@@ -3649,8 +3666,6 @@ version_script='--version-script'
 objformat="elf32"
 x86asmexe_default="nasm"
 windres_default="windres"
-nvcc_default="nvcc"
-nvccflags_default="-gencode arch=compute_30,code=sm_30 -O2"
 striptype="direct"
 
 # OS
@@ -3844,8 +3859,22 @@ die_unknown(){
 }
 
 print_in_columns() {
-    cols=$(expr $ncols / 24)
-    cat | tr ' ' '\n' | sort | pr -r "-$cols" -w $ncols -t
+    tr ' ' '\n' | sort | tr '\r\n' '  ' | awk -v col_width=24 -v width="$ncols" '
+    {
+        num_cols = width > col_width ? int(width / col_width) : 1;
+        num_rows = int((NF + num_cols-1) / num_cols);
+        y = x = 1;
+        for (y = 1; y <= num_rows; y++) {
+            i = y;
+            for (x = 1; x <= num_cols; x++) {
+                if (i <= NF) {
+                  line = sprintf("%s%-" col_width "s", line, $i);
+                }
+                i = i + num_rows;
+            }
+            print line; line = "";
+        }
+    }' | sed 's/ *$//'
 }
 
 show_list() {
@@ -4203,6 +4232,20 @@ strip_default="${cross_prefix}${strip_default}"
 windres_default="${cross_prefix}${windres_default}"
 
 sysinclude_default="${sysroot}/usr/include"
+
+if enabled cuda_sdk; then
+    warn "Option --enable-cuda-sdk is deprecated. Use --enable-cuda-nvcc instead."
+    enable cuda_nvcc
+fi
+
+if enabled cuda_nvcc; then
+    nvcc_default="nvcc"
+    nvccflags_default="-gencode arch=compute_30,code=sm_30 -O2"
+else
+    nvcc_default="clang"
+    nvccflags_default="--cuda-gpu-arch=sm_30 -O2"
+    NVCC_C=""
+fi
 
 set_default arch cc cxx doxygen pkg_config ranlib strip sysinclude \
     target_exec x86asmexe nvcc
@@ -5741,6 +5784,7 @@ elif enabled mips; then
     enabled mipsfpu && enabled msa && check_inline_asm_flags msa '"addvi.b $w0, $w1, 1"' '-mmsa' && check_headers msa.h || disable msa
     enabled mipsdsp && check_inline_asm_flags mipsdsp '"addu.qb $t0, $t1, $t2"' '-mdsp'
     enabled mipsdspr2 && check_inline_asm_flags mipsdspr2 '"absq_s.qb $t0, $t1"' '-mdspr2'
+    enabled msa && enabled msa2 && check_inline_asm_flags msa2 '"nxbits.any.b $w0, $w0"' '-mmsa2' && check_headers msa2.h || disable msa2
 
     if enabled bigendian && enabled msa; then
         disable msa
@@ -6032,6 +6076,9 @@ enabled videotoolbox && {
     check_lib coreservices CoreServices/CoreServices.h UTGetOSTypeFromString "-framework CoreServices"
     check_func_headers CoreMedia/CMFormatDescription.h kCMVideoCodecType_HEVC "-framework CoreMedia"
     check_func_headers CoreVideo/CVPixelBuffer.h kCVPixelFormatType_420YpCbCr10BiPlanarVideoRange "-framework CoreVideo"
+    check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferTransferFunction_SMPTE_ST_2084_PQ "-framework CoreVideo"
+    check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferTransferFunction_ITU_R_2100_HLG "-framework CoreVideo"
+    check_func_headers CoreVideo/CVImageBuffer.h kCVImageBufferTransferFunction_Linear "-framework CoreVideo"
 }
 
 check_struct "sys/time.h sys/resource.h" "struct rusage" ru_maxrss
@@ -6044,9 +6091,21 @@ check_type "d3d9.h dxva2api.h" DXVA2_ConfigPictureDecode -D_WIN32_WINNT=0x0602
 
 check_type "vdpau/vdpau.h" "VdpPictureInfoHEVC"
 
-if enabled cuda_sdk; then
-    warn "Option --enable-cuda-sdk is deprecated. Use --enable-cuda-nvcc instead."
-    enable cuda_nvcc
+if [ -z "$nvccflags" ]; then
+    nvccflags=$nvccflags_default
+fi
+
+if enabled x86_64 || enabled ppc64 || enabled aarch64; then
+    nvccflags="$nvccflags -m64"
+else
+    nvccflags="$nvccflags -m32"
+fi
+
+if enabled cuda_nvcc; then
+    nvccflags="$nvccflags -ptx"
+else
+    nvccflags="$nvccflags -S -nocudalib -nocudainc --cuda-device-only -include ${source_link}/compat/cuda/cuda_runtime.h"
+    check_nvcc cuda_llvm
 fi
 
 if ! disabled ffnvcodec; then
@@ -6124,7 +6183,7 @@ for func in $COMPLEX_FUNCS; do
 done
 
 # these are off by default, so fail if requested and not available
-enabled cuda_nvcc         && { check_nvcc || die "ERROR: failed checking for nvcc."; }
+enabled cuda_nvcc         && { check_nvcc cuda_nvcc || die "ERROR: failed checking for nvcc."; }
 enabled chromaprint       && require chromaprint chromaprint.h chromaprint_get_version -lchromaprint
 enabled decklink          && { require_headers DeckLinkAPI.h &&
                                { test_cpp_condition DeckLinkAPIVersion.h "BLACKMAGIC_DECKLINK_API_VERSION >= 0x0a090500" || die "ERROR: Decklink API version must be >= 10.9.5."; } }
@@ -6689,16 +6748,6 @@ if [ -z "$optflags" ]; then
     fi
 fi
 
-if [ -z "$nvccflags" ]; then
-    nvccflags=$nvccflags_default
-fi
-
-if enabled x86_64 || enabled ppc64 || enabled aarch64; then
-    nvccflags="$nvccflags -m64"
-else
-    nvccflags="$nvccflags -m32"
-fi
-
 check_optflags(){
     check_cflags "$@"
     enabled lto && check_ldflags "$@"
@@ -7120,6 +7169,7 @@ if enabled mips; then
     echo "MIPS DSP R1 enabled       ${mipsdsp-no}"
     echo "MIPS DSP R2 enabled       ${mipsdspr2-no}"
     echo "MIPS MSA enabled          ${msa-no}"
+    echo "MIPS MSA2 enabled         ${msa2-no}"
     echo "LOONGSON MMI enabled      ${mmi-no}"
 fi
 if enabled ppc; then

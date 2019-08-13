@@ -4562,8 +4562,6 @@ static int mov_read_tfhd(MOVContext *c, AVIOContext *pb, MOVAtom atom)
     MOVTrackExt *trex = NULL;
     int flags, track_id, i;
 
-    c->fragment.found_tfhd = 1;
-
     avio_r8(pb); /* version */
     flags = avio_rb24(pb);
 
@@ -4579,6 +4577,7 @@ static int mov_read_tfhd(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         av_log(c->fc, AV_LOG_WARNING, "could not find corresponding trex (id %u)\n", track_id);
         return 0;
     }
+    c->fragment.found_tfhd = 1;
     frag->track_id = track_id;
     set_frag_stream(&c->frag_index, track_id);
 
@@ -4782,8 +4781,8 @@ static int mov_read_trun(MOVContext *c, AVIOContext *pb, MOVAtom atom)
         entries = UINT_MAX / sizeof(AVIndexEntry) - st->nb_index_entries;
         av_log(c->fc, AV_LOG_ERROR, "Failed to add index entry\n");
     }
-    if (entries <= 0)
-        return -1;
+    if (entries == 0)
+        return 0;
 
     requested_size = (st->nb_index_entries + entries) * sizeof(AVIndexEntry);
     new_entries = av_fast_realloc(st->index_entries,

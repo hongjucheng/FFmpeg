@@ -681,7 +681,7 @@ static inline void tm2_still_block(TM2Context *ctx, AVFrame *pic, int bx, int by
 static inline void tm2_update_block(TM2Context *ctx, AVFrame *pic, int bx, int by)
 {
     int i, j;
-    int d;
+    unsigned d;
     TM2_INIT_POINTERS_2();
 
     /* update chroma */
@@ -764,10 +764,10 @@ static inline void tm2_motion_block(TM2Context *ctx, AVFrame *pic, int bx, int b
     }
     /* calculate deltas */
     Y -= Ystride * 4;
-    ctx->D[0] = Y[3] - last[3];
-    ctx->D[1] = Y[3 + Ystride] - Y[3];
-    ctx->D[2] = Y[3 + Ystride * 2] - Y[3 + Ystride];
-    ctx->D[3] = Y[3 + Ystride * 3] - Y[3 + Ystride * 2];
+    ctx->D[0] = (unsigned)Y[3] - last[3];
+    ctx->D[1] = (unsigned)Y[3 + Ystride] - Y[3];
+    ctx->D[2] = (unsigned)Y[3 + Ystride * 2] - Y[3 + Ystride];
+    ctx->D[3] = (unsigned)Y[3 + Ystride * 3] - Y[3 + Ystride * 2];
     for (i = 0; i < 4; i++)
         last[i] = Y[i + Ystride * 3];
 }

@@ -26,9 +26,8 @@ OBJS-$(HAVE_THREADS)                         += pthread.o
 
 # subsystems
 OBJS-$(CONFIG_QSVVPP)                        += qsvvpp.o
-DNN-OBJS-$(CONFIG_LIBTENSORFLOW)             += dnn_backend_tf.o
-OBJS-$(CONFIG_DNN)                           += dnn_interface.o dnn_backend_native.o $(DNN-OBJS-yes)
 OBJS-$(CONFIG_SCENE_SAD)                     += scene_sad.o
+include $(SRC_PATH)/libavfilter/dnn/Makefile
 
 # audio filters
 OBJS-$(CONFIG_ABENCH_FILTER)                 += f_bench.o
@@ -101,6 +100,7 @@ OBJS-$(CONFIG_COMPENSATIONDELAY_FILTER)      += af_compensationdelay.o
 OBJS-$(CONFIG_CROSSFEED_FILTER)              += af_crossfeed.o
 OBJS-$(CONFIG_CRYSTALIZER_FILTER)            += af_crystalizer.o
 OBJS-$(CONFIG_DCSHIFT_FILTER)                += af_dcshift.o
+OBJS-$(CONFIG_DEESSER_FILTER)                += af_deesser.o
 OBJS-$(CONFIG_DRMETER_FILTER)                += af_drmeter.o
 OBJS-$(CONFIG_DYNAUDNORM_FILTER)             += af_dynaudnorm.o
 OBJS-$(CONFIG_EARWAX_FILTER)                 += af_earwax.o
@@ -151,6 +151,7 @@ OBJS-$(CONFIG_SINE_FILTER)                   += asrc_sine.o
 OBJS-$(CONFIG_ANULLSINK_FILTER)              += asink_anullsink.o
 
 # video filters
+OBJS-$(CONFIG_ADDROI_FILTER)                 += vf_addroi.o
 OBJS-$(CONFIG_ALPHAEXTRACT_FILTER)           += vf_extractplanes.o
 OBJS-$(CONFIG_ALPHAMERGE_FILTER)             += vf_alphamerge.o
 OBJS-$(CONFIG_AMPLIFY_FILTER)                += vf_amplify.o
@@ -200,6 +201,7 @@ OBJS-$(CONFIG_DCTDNOIZ_FILTER)               += vf_dctdnoiz.o
 OBJS-$(CONFIG_DEBAND_FILTER)                 += vf_deband.o
 OBJS-$(CONFIG_DEBLOCK_FILTER)                += vf_deblock.o
 OBJS-$(CONFIG_DECIMATE_FILTER)               += vf_decimate.o
+OBJS-$(CONFIG_DERAIN_FILTER)                 += vf_derain.o
 OBJS-$(CONFIG_DECONVOLVE_FILTER)             += vf_convolve.o framesync.o
 OBJS-$(CONFIG_DEDOT_FILTER)                  += vf_dedot.o
 OBJS-$(CONFIG_DEFLATE_FILTER)                += vf_neighbor.o

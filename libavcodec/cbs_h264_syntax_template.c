@@ -137,6 +137,10 @@ static int FUNC(vui_parameters)(CodedBitstreamContext *ctx, RWContext *rw,
             ub(8, colour_primaries);
             ub(8, transfer_characteristics);
             ub(8, matrix_coefficients);
+        } else {
+            infer(colour_primaries,         2);
+            infer(transfer_characteristics, 2);
+            infer(matrix_coefficients,      2);
         }
     } else {
         infer(video_format,             5);
@@ -650,7 +654,7 @@ static int FUNC(sei_pic_timing)(CodedBitstreamContext *ctx, RWContext *rw,
     }
 
     if (sps->vui.pic_struct_present_flag) {
-        static const int num_clock_ts[9] = {
+        static const uint8_t num_clock_ts[9] = {
             1, 1, 1, 2, 2, 3, 3, 2, 3
         };
         int i;
