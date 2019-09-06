@@ -348,6 +348,11 @@ static av_cold int read_specific_config(ALSDecContext *ctx)
     if (als_id != MKBETAG('A','L','S','\0'))
         return AVERROR_INVALIDDATA;
 
+    if (avctx->channels > FF_SANE_NB_CHANNELS) {
+        avpriv_request_sample(avctx, "Huge number of channels\n");
+        return AVERROR_PATCHWELCOME;
+    }
+
     ctx->cur_frame_length = sconf->frame_length;
 
     // read channel config
@@ -816,7 +821,9 @@ static int read_var_block_data(ALSDecContext *ctx, ALSBlockData *bd)
         unsigned int low;
         unsigned int value;
 
-        ff_bgmc_decode_init(gb, &high, &low, &value);
+        int ret = ff_bgmc_decode_init(gb, &high, &low, &value);
+        if (ret < 0)
+            return ret;
 
         current_res = bd->raw_samples + start;
 
@@ -946,7 +953,7 @@ static int decode_var_block_data(ALSDecContext *ctx, ALSBlockData *bd)
 
         // reconstruct difference signal for prediction (joint-stereo)
         if (bd->js_blocks && bd->raw_other) {
-            int32_t *left, *right;
+            uint32_t *left, *right;
 
             if (bd->raw_other > raw_samples) {  // D = R - L
                 left  = raw_samples;
