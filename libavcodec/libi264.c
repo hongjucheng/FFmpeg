@@ -195,6 +195,7 @@ static av_cold int I264_init(AVCodecContext *avctx)
 
     i4->configs.width  = avctx->width;
     i4->configs.height = avctx->height;
+	
     if (avctx->height <= 180) {
         i4->configs.profile = PROFILE_STORE_320x180;
     } else if(avctx->height <= 240){
@@ -204,11 +205,17 @@ static av_cold int I264_init(AVCodecContext *avctx)
     } else if(avctx->height <= 540 && avctx->width < 960){
         i4->configs.profile = PROFILE_STORE_720x540;
     } else if(avctx->height <= 540 && avctx->width < 1280){
-        i4->configs.profile = PROFILE_STORE960x540;
+        i4->configs.profile = PROFILE_STORE_960x540;
     } else if(avctx->height <= 720){
         i4->configs.profile = PROFILE_STORE_1280x720;
-    } else {
+    } else if(avctx->height <= 1080){
         i4->configs.profile = PROFILE_STORE_1920x1080;
+
+        if ((avctx->bit_rate / 1000) == 10000) {
+            i4->configs.profile = PROFILE_STORE_1920x1080_10M;
+        }
+    } else {
+        i4->configs.profile = PROFILE_STORE_4K;
     }
 
     i4->configs.bitrate = avctx->bit_rate / 1000;
