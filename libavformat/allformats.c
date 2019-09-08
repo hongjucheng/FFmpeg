@@ -488,6 +488,8 @@ extern AVInputFormat  ff_image_tiff_pipe_demuxer;
 extern AVInputFormat  ff_image_webp_pipe_demuxer;
 extern AVInputFormat  ff_image_xpm_pipe_demuxer;
 extern AVInputFormat  ff_image_xwd_pipe_demuxer;
+extern AVInputFormat  ff_prores_demuxer;
+extern AVOutputFormat ff_prores_muxer;
 
 /* external libraries */
 extern AVOutputFormat ff_chromaprint_muxer;

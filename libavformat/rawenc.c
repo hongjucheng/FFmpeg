@@ -503,3 +503,16 @@ AVOutputFormat ff_vc1_muxer = {
     .flags             = AVFMT_NOTIMESTAMPS,
 };
 #endif
+
+#if CONFIG_PRORES_MUXER
+AVOutputFormat ff_prores_muxer = {
+    .name              = "prores",
+    .long_name         = NULL_IF_CONFIG_SMALL("raw ProRes video"),
+    .extensions        = "prores",
+    .audio_codec       = AV_CODEC_ID_NONE,
+    .video_codec       = AV_CODEC_ID_PRORES,
+    .write_header      = force_one_stream,
+    .write_packet      = ff_raw_write_packet,
+    .flags             = AVFMT_NOTIMESTAMPS,
+};
+#endif

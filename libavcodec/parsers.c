@@ -67,6 +67,7 @@ extern AVCodecParser ff_vp3_parser;
 extern AVCodecParser ff_vp8_parser;
 extern AVCodecParser ff_vp9_parser;
 extern AVCodecParser ff_xma_parser;
+extern AVCodecParser ff_prores_parser;
 
 #include "libavcodec/parser_list.c"
 
