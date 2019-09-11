@@ -1,6 +1,6 @@
 /*
  * RAW ProRes demuxer
- * Copyright (c) 2008 Baptiste Coudurier <baptiste.coudurier@gmail.com>
+ * Copyright (c) 2019 hongjucheng <hongjucheng_17@163.com>
  *
  * This file is part of FFmpeg.
  *
@@ -23,33 +23,37 @@
 #include "avformat.h"
 #include "rawdec.h"
 
-static int prores_probe(const AVProbeData *p)
+static int prores_check_frame_header(const uint8_t *buf, const int data_size)
 {
-    const uint8_t *buf;
-    int buf_size, hdr_size, version;
-    int width, height, frame_type, alpha_info;
-
-    if (p->buf_size < 28 || AV_RL32(p->buf + 4) != AV_RL32("icpf"))
-        return 0;
-
-    buf      = p->buf + 8;
-    buf_size = p->buf_size - 8;
+    int hdr_size, width, height;
+    int version, alpha_info;
 
     hdr_size = AV_RB16(buf);
-    version  = AV_RB16(buf + 2);
+    if (hdr_size < 20)
+        return AVERROR_INVALIDDATA;
+
+    version = buf[3];
     if (version > 1)
-        return 0;
+        return AVERROR_INVALIDDATA;
 
     width  = AV_RB16(buf + 8);
     height = AV_RB16(buf + 10);
     if (!width || !height)
+        return AVERROR_INVALIDDATA;
+
+    alpha_info    = buf[17] & 0x0f;
+    if (alpha_info > 2)
+        return AVERROR_INVALIDDATA;
+
+    return 0;
+}
+
+static int prores_probe(const AVProbeData *p)
+{
+    if (p->buf_size < 28 || AV_RL32(p->buf + 4) != AV_RL32("icpf"))
         return 0;
 
-    frame_type = (buf[12] >> 2) & 3;
-    if (frame_type < 0 || frame_type > 2)
-        return 0;
-    alpha_info = buf[17] & 0xf;
-    if (alpha_info > 2)
+    if (prores_check_frame_header(p->buf + 8, p->buf_size - 8) < 0)
         return 0;
 
     return AVPROBE_SCORE_MAX;

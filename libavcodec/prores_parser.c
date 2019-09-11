@@ -1,4 +1,7 @@
 /*
+ * ProRes parser
+ * Copyright (c) 2019 hongjucheng <hongjucheng_17@163.com>
+ * 
  * This file is part of FFmpeg.
  *
  * FFmpeg is free software; you can redistribute it and/or
