@@ -45,9 +45,8 @@ void av_bsf_free(AVBSFContext **pctx)
     if (ctx->filter->priv_class && ctx->priv_data)
         av_opt_free(ctx->priv_data);
 
-    av_opt_free(ctx);
-
-    av_packet_free(&ctx->internal->buffer_pkt);
+    if (ctx->internal)
+        av_packet_free(&ctx->internal->buffer_pkt);
     av_freep(&ctx->internal);
     av_freep(&ctx->priv_data);
 
@@ -65,12 +64,18 @@ static void *bsf_child_next(void *obj, void *prev)
     return NULL;
 }
 
+static const char *bsf_to_name(void *bsf)
+{
+    return ((AVBSFContext *)bsf)->filter->name;
+}
+
 static const AVClass bsf_class = {
     .class_name       = "AVBSFContext",
-    .item_name        = av_default_item_name,
+    .item_name        = bsf_to_name,
     .version          = LIBAVUTIL_VERSION_INT,
     .child_next       = bsf_child_next,
     .child_class_next = ff_bsf_child_class_next,
+    .category         = AV_CLASS_CATEGORY_BITSTREAM_FILTER,
 };
 
 const AVClass *av_bsf_get_class(void)
@@ -81,6 +86,7 @@ const AVClass *av_bsf_get_class(void)
 int av_bsf_alloc(const AVBitStreamFilter *filter, AVBSFContext **pctx)
 {
     AVBSFContext *ctx;
+    AVBSFInternal *bsfi;
     int ret;
 
     ctx = av_mallocz(sizeof(*ctx));
@@ -97,19 +103,18 @@ int av_bsf_alloc(const AVBitStreamFilter *filter, AVBSFContext **pctx)
         goto fail;
     }
 
-    ctx->internal = av_mallocz(sizeof(*ctx->internal));
-    if (!ctx->internal) {
+    bsfi = av_mallocz(sizeof(*bsfi));
+    if (!bsfi) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
+    ctx->internal = bsfi;
 
-    ctx->internal->buffer_pkt = av_packet_alloc();
-    if (!ctx->internal->buffer_pkt) {
+    bsfi->buffer_pkt = av_packet_alloc();
+    if (!bsfi->buffer_pkt) {
         ret = AVERROR(ENOMEM);
         goto fail;
     }
-
-    av_opt_set_defaults(ctx);
 
     /* allocate priv data and init private options */
     if (filter->priv_data_size) {
@@ -174,9 +179,11 @@ int av_bsf_init(AVBSFContext *ctx)
 
 void av_bsf_flush(AVBSFContext *ctx)
 {
-    ctx->internal->eof = 0;
+    AVBSFInternal *bsfi = ctx->internal;
 
-    av_packet_unref(ctx->internal->buffer_pkt);
+    bsfi->eof = 0;
+
+    av_packet_unref(bsfi->buffer_pkt);
 
     if (ctx->filter->flush)
         ctx->filter->flush(ctx);
@@ -184,26 +191,27 @@ void av_bsf_flush(AVBSFContext *ctx)
 
 int av_bsf_send_packet(AVBSFContext *ctx, AVPacket *pkt)
 {
+    AVBSFInternal *bsfi = ctx->internal;
     int ret;
 
     if (!pkt || (!pkt->data && !pkt->side_data_elems)) {
-        ctx->internal->eof = 1;
+        bsfi->eof = 1;
         return 0;
     }
 
-    if (ctx->internal->eof) {
+    if (bsfi->eof) {
         av_log(ctx, AV_LOG_ERROR, "A non-NULL packet sent after an EOF.\n");
         return AVERROR(EINVAL);
     }
 
-    if (ctx->internal->buffer_pkt->data ||
-        ctx->internal->buffer_pkt->side_data_elems)
+    if (bsfi->buffer_pkt->data ||
+        bsfi->buffer_pkt->side_data_elems)
         return AVERROR(EAGAIN);
 
     ret = av_packet_make_refcounted(pkt);
     if (ret < 0)
         return ret;
-    av_packet_move_ref(ctx->internal->buffer_pkt, pkt);
+    av_packet_move_ref(bsfi->buffer_pkt, pkt);
 
     return 0;
 }
@@ -215,38 +223,38 @@ int av_bsf_receive_packet(AVBSFContext *ctx, AVPacket *pkt)
 
 int ff_bsf_get_packet(AVBSFContext *ctx, AVPacket **pkt)
 {
-    AVBSFInternal *in = ctx->internal;
+    AVBSFInternal *bsfi = ctx->internal;
     AVPacket *tmp_pkt;
 
-    if (in->eof)
+    if (bsfi->eof)
         return AVERROR_EOF;
 
-    if (!ctx->internal->buffer_pkt->data &&
-        !ctx->internal->buffer_pkt->side_data_elems)
+    if (!bsfi->buffer_pkt->data &&
+        !bsfi->buffer_pkt->side_data_elems)
         return AVERROR(EAGAIN);
 
     tmp_pkt = av_packet_alloc();
     if (!tmp_pkt)
         return AVERROR(ENOMEM);
 
-    *pkt = ctx->internal->buffer_pkt;
-    ctx->internal->buffer_pkt = tmp_pkt;
+    *pkt = bsfi->buffer_pkt;
+    bsfi->buffer_pkt = tmp_pkt;
 
     return 0;
 }
 
 int ff_bsf_get_packet_ref(AVBSFContext *ctx, AVPacket *pkt)
 {
-    AVBSFInternal *in = ctx->internal;
+    AVBSFInternal *bsfi = ctx->internal;
 
-    if (in->eof)
+    if (bsfi->eof)
         return AVERROR_EOF;
 
-    if (!ctx->internal->buffer_pkt->data &&
-        !ctx->internal->buffer_pkt->side_data_elems)
+    if (!bsfi->buffer_pkt->data &&
+        !bsfi->buffer_pkt->side_data_elems)
         return AVERROR(EAGAIN);
 
-    av_packet_move_ref(pkt, ctx->internal->buffer_pkt);
+    av_packet_move_ref(pkt, bsfi->buffer_pkt);
 
     return 0;
 }
@@ -516,8 +524,8 @@ static int bsf_parse_single(const char *str, AVBSFList *bsf_lst)
 
     ret = av_bsf_list_append2(bsf_lst, bsf_name, &bsf_options);
 
-    av_dict_free(&bsf_options);
 end:
+    av_dict_free(&bsf_options);
     av_free(buf);
     return ret;
 }

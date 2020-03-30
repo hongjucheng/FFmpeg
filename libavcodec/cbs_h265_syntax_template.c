@@ -1275,7 +1275,7 @@ static int FUNC(slice_segment_header)(CodedBitstreamContext *ctx, RWContext *rw,
     flag(first_slice_segment_in_pic_flag);
 
     if (current->nal_unit_header.nal_unit_type >= HEVC_NAL_BLA_W_LP &&
-        current->nal_unit_header.nal_unit_type <= HEVC_NAL_IRAP_VCL23)
+        current->nal_unit_header.nal_unit_type <= HEVC_NAL_RSV_IRAP_VCL23)
         flag(no_output_of_prior_pics_flag);
 
     ue(slice_pic_parameter_set_id, 0, 63);
@@ -2184,6 +2184,7 @@ static int FUNC(sei)(CodedBitstreamContext *ctx, RWContext *rw,
         current->payload[k].payload_type = payload_type;
         current->payload[k].payload_size = payload_size;
 
+        current->payload_count++;
         CHECK(FUNC(sei_payload)(ctx, rw, &current->payload[k], prefix));
 
         if (!cbs_h2645_read_more_rbsp_data(rw))
@@ -2194,7 +2195,6 @@ static int FUNC(sei)(CodedBitstreamContext *ctx, RWContext *rw,
                "SEI message: found %d.\n", k);
         return AVERROR_INVALIDDATA;
     }
-    current->payload_count = k + 1;
 #else
     for (k = 0; k < current->payload_count; k++) {
         PutBitContext start_state;

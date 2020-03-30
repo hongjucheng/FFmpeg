@@ -168,7 +168,7 @@ static void apply_delogo(uint8_t *dst, int dst_linesize,
                  botleft[x-logo_x1-1]  +
                  botleft[x-logo_x1+1]) * weightb;
             weight = (weightl + weightr + weightt + weightb) * 3U;
-            interp = ROUNDED_DIV(interp, weight);
+            interp = (interp + (weight >> 1)) / weight;
 
             if (y >= logo_y+band && y < logo_y+logo_h-band &&
                 x >= logo_x+band && x < logo_x+logo_w-band) {
@@ -207,10 +207,10 @@ typedef struct DelogoContext {
 #define FLAGS AV_OPT_FLAG_FILTERING_PARAM|AV_OPT_FLAG_VIDEO_PARAM
 
 static const AVOption delogo_options[]= {
-    { "x",    "set logo x position",       OFFSET(x_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, CHAR_MIN, CHAR_MAX, FLAGS },
-    { "y",    "set logo y position",       OFFSET(y_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, CHAR_MIN, CHAR_MAX, FLAGS },
-    { "w",    "set logo width",            OFFSET(w_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, CHAR_MIN, CHAR_MAX, FLAGS },
-    { "h",    "set logo height",           OFFSET(h_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, CHAR_MIN, CHAR_MAX, FLAGS },
+    { "x",    "set logo x position",       OFFSET(x_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, 0, 0, FLAGS },
+    { "y",    "set logo y position",       OFFSET(y_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, 0, 0, FLAGS },
+    { "w",    "set logo width",            OFFSET(w_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, 0, 0, FLAGS },
+    { "h",    "set logo height",           OFFSET(h_expr),    AV_OPT_TYPE_STRING, { .str = "-1" }, 0, 0, FLAGS },
 #if LIBAVFILTER_VERSION_MAJOR < 7
     /* Actual default value for band/t is 1, set in init */
     { "band", "set delogo area band size", OFFSET(band), AV_OPT_TYPE_INT, { .i64 =  0 },  0, INT_MAX, FLAGS },
@@ -221,7 +221,7 @@ static const AVOption delogo_options[]= {
 };
 
 AVFILTER_DEFINE_CLASS(delogo);
-static void uninit(AVFilterContext *ctx)
+static av_cold void uninit(AVFilterContext *ctx)
 {
     DelogoContext *s = ctx->priv;
 
@@ -326,6 +326,21 @@ static int filter_frame(AVFilterLink *inlink, AVFrame *in)
     s->y = av_expr_eval(s->y_pexpr, s->var_values, s);
     s->w = av_expr_eval(s->w_pexpr, s->var_values, s);
     s->h = av_expr_eval(s->h_pexpr, s->var_values, s);
+
+    if (s->x + (s->band - 1) <= 0 || s->x + s->w - (s->band*2 - 2) > inlink->w ||
+        s->y + (s->band - 1) <= 0 || s->y + s->h - (s->band*2 - 2) > inlink->h) {
+        av_log(s, AV_LOG_WARNING, "Logo area is outside of the frame,"
+               " auto set the area inside of the frame\n");
+    }
+
+    if (s->x + (s->band - 1) <= 0)
+        s->x = 1 + s->band;
+    if (s->y + (s->band - 1) <= 0)
+        s->y = 1 + s->band;
+    if (s->x + s->w - (s->band*2 - 2) > inlink->w)
+        s->w = inlink->w - s->x - (s->band*2 - 2);
+    if (s->y + s->h - (s->band*2 - 2) > inlink->h)
+        s->h = inlink->h - s->y - (s->band*2 - 2);
 
     ret = config_input(inlink);
     if (ret < 0) {

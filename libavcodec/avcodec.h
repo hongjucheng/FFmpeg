@@ -92,6 +92,7 @@
  *     compressed data in an AVPacket.
  *   - For encoding, call avcodec_send_frame() to give the encoder an AVFrame
  *     containing uncompressed audio or video.
+ *
  *   In both cases, it is recommended that AVPackets and AVFrames are
  *   refcounted, or libavcodec might have to copy the input data. (libavformat
  *   always returns refcounted AVPackets, and av_frame_get_buffer() allocates
@@ -102,6 +103,7 @@
  *     an AVFrame containing uncompressed audio or video data.
  *   - For encoding, call avcodec_receive_packet(). On success, it will return
  *     an AVPacket with a compressed frame.
+ *
  *   Repeat this call until it returns AVERROR(EAGAIN) or an error. The
  *   AVERROR(EAGAIN) return value means that new input data is required to
  *   return new output. In this case, continue with sending input. For each
@@ -458,6 +460,9 @@ enum AVCodecID {
     AV_CODEC_ID_LSCR,
     AV_CODEC_ID_VP4,
     AV_CODEC_ID_IMM5,
+    AV_CODEC_ID_MVDV,
+    AV_CODEC_ID_MVHA,
+    AV_CODEC_ID_CDTOONS,
 
     /* various PCM "codecs" */
     AV_CODEC_ID_FIRST_AUDIO = 0x10000,     ///< A dummy id pointing at the start of audio codecs
@@ -543,6 +548,12 @@ enum AVCodecID {
     AV_CODEC_ID_ADPCM_IMA_DAT4,
     AV_CODEC_ID_ADPCM_MTAF,
     AV_CODEC_ID_ADPCM_AGM,
+    AV_CODEC_ID_ADPCM_ARGO,
+    AV_CODEC_ID_ADPCM_IMA_SSI,
+    AV_CODEC_ID_ADPCM_ZORK,
+    AV_CODEC_ID_ADPCM_IMA_APM,
+    AV_CODEC_ID_ADPCM_IMA_ALP,
+    AV_CODEC_ID_ADPCM_IMA_MTF,
 
     /* AMR */
     AV_CODEC_ID_AMR_NB = 0x12000,
@@ -560,6 +571,7 @@ enum AVCodecID {
 
     AV_CODEC_ID_SDX2_DPCM = 0x14800,
     AV_CODEC_ID_GREMLIN_DPCM,
+    AV_CODEC_ID_DERF_DPCM,
 
     /* audio codecs */
     AV_CODEC_ID_MP2 = 0x15000,
@@ -653,6 +665,10 @@ enum AVCodecID {
     AV_CODEC_ID_SBC,
     AV_CODEC_ID_ATRAC9,
     AV_CODEC_ID_HCOM,
+    AV_CODEC_ID_ACELP_KELVIN,
+    AV_CODEC_ID_MPEGH_3D_AUDIO,
+    AV_CODEC_ID_SIREN,
+    AV_CODEC_ID_HCA,
 
     /* subtitle codecs */
     AV_CODEC_ID_FIRST_SUBTITLE = 0x17000,          ///< A dummy ID pointing at the start of subtitle codecs.
@@ -689,6 +705,7 @@ enum AVCodecID {
     AV_CODEC_ID_TTF = 0x18000,
 
     AV_CODEC_ID_SCTE_35, ///< Contain timestamp estimated through PCR of program stream.
+    AV_CODEC_ID_EPG,
     AV_CODEC_ID_BINTEXT    = 0x18800,
     AV_CODEC_ID_XBIN,
     AV_CODEC_ID_IDF,
@@ -1092,6 +1109,18 @@ typedef struct RcOverride{
  */
 #define AV_CODEC_CAP_ENCODER_REORDERED_OPAQUE (1 << 20)
 
+/* Exported side data.
+   These flags can be passed in AVCodecContext.export_side_data before initialization.
+*/
+/**
+ * Export motion vectors through frame side data
+ */
+#define AV_CODEC_EXPORT_DATA_MVS         (1 << 0)
+/**
+ * Export encoder Producer Reference Time through packet side data
+ */
+#define AV_CODEC_EXPORT_DATA_PRFT        (1 << 1)
+
 /**
  * Pan Scan area.
  * This specifies the area which should be displayed.
@@ -1170,6 +1199,19 @@ typedef struct AVCPBProperties {
      */
     uint64_t vbv_delay;
 } AVCPBProperties;
+
+/**
+ * This structure supplies correlation between a packet timestamp and a wall clock
+ * production time. The definition follows the Producer Reference Time ('prft')
+ * as defined in ISO/IEC 14496-12
+ */
+typedef struct AVProducerReferenceTime {
+    /**
+     * A UTC timestamp, in microseconds, since Unix epoch (e.g, av_gettime()).
+     */
+    int64_t wallclock;
+    int flags;
+} AVProducerReferenceTime;
 
 /**
  * The decoder will keep a reference to the frame and may reuse it later.
@@ -1404,6 +1446,19 @@ enum AVPacketSideDataType {
      * in ETSI TS 101 154 using AVActiveFormatDescription enum.
      */
     AV_PKT_DATA_AFD,
+
+    /**
+     * Producer Reference Time data corresponding to the AVProducerReferenceTime struct,
+     * usually exported by some encoders (on demand through the prft flag set in the
+     * AVCodecContext export_side_data field).
+     */
+    AV_PKT_DATA_PRFT,
+
+    /**
+     * ICC profile data consisting of an opaque octet buffer following the
+     * format described by ISO 15076-1.
+     */
+    AV_PKT_DATA_ICC_PROFILE,
 
     /**
      * The number of side data types.
@@ -3371,6 +3426,24 @@ typedef struct AVCodecContext {
      * - encoding: unused
      */
     int discard_damaged_percentage;
+
+    /**
+     * The number of samples per frame to maximally accept.
+     *
+     * - decoding: set by user
+     * - encoding: set by user
+     */
+    int64_t max_samples;
+
+    /**
+     * Bit set of AV_CODEC_EXPORT_DATA_* flags, which affects the kind of
+     * metadata exported in frame, packet, or coded stream side data by
+     * decoders and encoders.
+     *
+     * - decoding: set by user
+     * - encoding: set by user
+     */
+    int export_side_data;
 } AVCodecContext;
 
 #if FF_API_CODEC_GET_SET
@@ -3621,6 +3694,11 @@ typedef struct AVCodec {
      * The user can only access this field via avcodec_get_hw_config().
      */
     const struct AVCodecHWConfigInternal **hw_configs;
+
+    /**
+     * List of supported codec_tags, terminated by FF_CODEC_TAGS_END.
+     */
+    const uint32_t *codec_tags;
 } AVCodec;
 
 #if FF_API_CODEC_GET_SET
@@ -4570,10 +4648,11 @@ void av_packet_free_side_data(AVPacket *pkt);
  *
  * @see av_packet_unref
  *
- * @param dst Destination packet
+ * @param dst Destination packet. Will be completely overwritten.
  * @param src Source packet
  *
- * @return 0 on success, a negative AVERROR on error.
+ * @return 0 on success, a negative AVERROR on error. On error, dst
+ *         will be blank (as if returned by av_packet_alloc()).
  */
 int av_packet_ref(AVPacket *dst, const AVPacket *src);
 
@@ -4836,7 +4915,7 @@ int avcodec_decode_video2(AVCodecContext *avctx, AVFrame *picture,
  * If no subtitle could be decompressed, got_sub_ptr is zero.
  * Otherwise, the subtitle is stored in *sub.
  * Note that AV_CODEC_CAP_DR1 is not available for subtitle codecs. This is for
- * simplicity, because the performance difference is expect to be negligible
+ * simplicity, because the performance difference is expected to be negligible
  * and reusing a get_buffer written for video codecs would probably perform badly
  * due to a potentially very different allocation pattern.
  *
@@ -4852,7 +4931,7 @@ int avcodec_decode_video2(AVCodecContext *avctx, AVFrame *picture,
  * before packets may be fed to the decoder.
  *
  * @param avctx the codec context
- * @param[out] sub The Preallocated AVSubtitle in which the decoded subtitle will be stored,
+ * @param[out] sub The preallocated AVSubtitle in which the decoded subtitle will be stored,
  *                 must be freed with avsubtitle_free if *got_sub_ptr is set.
  * @param[in,out] got_sub_ptr Zero if no subtitle could be decompressed, otherwise, it is nonzero.
  * @param[in] avpkt The input AVPacket containing the input buffer.
@@ -4969,7 +5048,7 @@ int avcodec_receive_frame(AVCodecContext *avctx, AVFrame *frame);
  *      AVERROR(EINVAL):   codec not opened, refcounted_frames not set, it is a
  *                         decoder, or requires flush
  *      AVERROR(ENOMEM):   failed to add packet to internal queue, or similar
- *      other errors: legitimate decoding errors
+ *      other errors: legitimate encoding errors
  */
 int avcodec_send_frame(AVCodecContext *avctx, const AVFrame *frame);
 
@@ -4979,14 +5058,14 @@ int avcodec_send_frame(AVCodecContext *avctx, const AVFrame *frame);
  * @param avctx codec context
  * @param avpkt This will be set to a reference-counted packet allocated by the
  *              encoder. Note that the function will always call
- *              av_frame_unref(frame) before doing anything else.
+ *              av_packet_unref(avpkt) before doing anything else.
  * @return 0 on success, otherwise negative error code:
  *      AVERROR(EAGAIN):   output is not available in the current state - user
  *                         must try to send input
  *      AVERROR_EOF:       the encoder has been fully flushed, and there will be
  *                         no more output packets
- *      AVERROR(EINVAL):   codec not opened, or it is an encoder
- *      other errors: legitimate decoding errors
+ *      AVERROR(EINVAL):   codec not opened, or it is a decoder
+ *      other errors: legitimate encoding errors
  */
 int avcodec_receive_packet(AVCodecContext *avctx, AVPacket *avpkt);
 
@@ -5936,11 +6015,13 @@ int av_bsf_init(AVBSFContext *ctx);
  *
  * @param pkt the packet to filter. The bitstream filter will take ownership of
  * the packet and reset the contents of pkt. pkt is not touched if an error occurs.
- * This parameter may be NULL, which signals the end of the stream (i.e. no more
- * packets will be sent). That will cause the filter to output any packets it
- * may have buffered internally.
+ * If pkt is empty (i.e. NULL, or pkt->data is NULL and pkt->side_data_elems zero),
+ * it signals the end of the stream (i.e. no more non-empty packets will be sent;
+ * sending more empty packets does nothing) and will cause the filter to output
+ * any packets it may have buffered internally.
  *
- * @return 0 on success, a negative AVERROR on error.
+ * @return 0 on success, a negative AVERROR on error. This function never fails if
+ * pkt is empty.
  */
 int av_bsf_send_packet(AVBSFContext *ctx, AVPacket *pkt);
 

@@ -334,6 +334,7 @@ static int update_context_from_user(AVCodecContext *dst, AVCodecContext *src)
 
     dst->slice_flags = src->slice_flags;
     dst->flags2      = src->flags2;
+    dst->export_side_data = src->export_side_data;
 
     copy_fields(skip_loop_filter, subtitle_header);
 
@@ -656,6 +657,13 @@ void ff_frame_thread_free(AVCodecContext *avctx, int thread_count)
     int i;
 
     park_frame_worker_threads(fctx, thread_count);
+
+    if (fctx->prev_thread && avctx->internal->hwaccel_priv_data !=
+                             fctx->prev_thread->avctx->internal->hwaccel_priv_data) {
+        if (update_context_from_thread(avctx, fctx->prev_thread->avctx, 1) < 0) {
+            av_log(avctx, AV_LOG_ERROR, "Failed to update user thread.\n");
+        }
+    }
 
     if (fctx->prev_thread && fctx->prev_thread != fctx->threads)
         if (update_context_from_thread(fctx->threads->avctx, fctx->prev_thread->avctx, 0) < 0) {

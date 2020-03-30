@@ -19,8 +19,6 @@
  * Foundation, Inc., 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA
  */
 
-#include "libavutil/attributes.h"
-#include "libavutil/bswap.h"
 #include "libavutil/channel_layout.h"
 #include "libavutil/intreadwrite.h"
 
@@ -105,15 +103,11 @@ static int dss_read_metadata_string(AVFormatContext *s, unsigned int offset,
 
     ret = avio_read(s->pb, value, size);
     if (ret < size) {
-        ret = ret < 0 ? ret : AVERROR_EOF;
-        goto exit;
+        av_free(value);
+        return ret < 0 ? ret : AVERROR_EOF;
     }
 
-    ret = av_dict_set(&s->metadata, key, value, 0);
-
-exit:
-    av_free(value);
-    return ret;
+    return av_dict_set(&s->metadata, key, value, AV_DICT_DONT_STRDUP_VAL);
 }
 
 static int dss_read_header(AVFormatContext *s)
@@ -261,14 +255,12 @@ static int dss_sp_read_packet(AVFormatContext *s, AVPacket *pkt)
     dss_sp_byte_swap(ctx, pkt->data, ctx->dss_sp_buf);
 
     if (ctx->dss_sp_swap_byte < 0) {
-        ret = AVERROR(EAGAIN);
-        goto error_eof;
+        return AVERROR(EAGAIN);
     }
 
     return pkt->size;
 
 error_eof:
-    av_packet_unref(pkt);
     return ret < 0 ? ret : AVERROR_EOF;
 }
 
@@ -310,7 +302,6 @@ static int dss_723_1_read_packet(AVFormatContext *s, AVPacket *pkt)
         ret = avio_read(s->pb, pkt->data + offset,
                         size2 - offset);
         if (ret < size2 - offset) {
-            av_packet_unref(pkt);
             return ret < 0 ? ret : AVERROR_EOF;
         }
 
@@ -320,7 +311,6 @@ static int dss_723_1_read_packet(AVFormatContext *s, AVPacket *pkt)
 
     ret = avio_read(s->pb, pkt->data + offset, size - offset);
     if (ret < size - offset) {
-        av_packet_unref(pkt);
         return ret < 0 ? ret : AVERROR_EOF;
     }
 
