@@ -92,6 +92,9 @@ MMX-OBJS-$(CONFIG_VC1DSP)              += x86/vc1dsp_mmx.o
 MMX-OBJS-$(CONFIG_SNOW_DECODER)        += x86/snowdsp.o
 MMX-OBJS-$(CONFIG_SNOW_ENCODER)        += x86/snowdsp.o
 
+# YASM optimizations
+X86ASM-OBJS                            += x86/deinterlace.o             \
+
 # subsystems
 X86ASM-OBJS-$(CONFIG_AC3DSP)           += x86/ac3dsp.o                  \
                                           x86/ac3dsp_downmix.o

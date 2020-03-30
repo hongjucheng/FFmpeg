@@ -6303,6 +6303,10 @@ const AVCodecDescriptor *avcodec_descriptor_get_by_name(const char *name);
  */
 AVCPBProperties *av_cpb_properties_alloc(size_t *size);
 
+
+int avpicture_deinterlace(AVPicture *dst, const AVPicture *src,
+                          enum AVPixelFormat pix_fmt, int width, int height);
+
 /**
  * @}
  */

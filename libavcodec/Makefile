@@ -37,6 +37,7 @@ OBJS = ac3_parser.o                                                     \
        dv_profile.o                                                     \
        encode.o                                                         \
        imgconvert.o                                                     \
+       deinterlace.o                                                    \
        jni.o                                                            \
        mathtables.o                                                     \
        mediacodec.o                                                     \
