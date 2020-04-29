@@ -106,6 +106,7 @@ static const AVOption options[] = {
     { "wallclock", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MOV_PRFT_SRC_WALLCLOCK}, 0, 0, AV_OPT_FLAG_ENCODING_PARAM, "prft"},
     { "pts", NULL, 0, AV_OPT_TYPE_CONST, {.i64 = MOV_PRFT_SRC_PTS}, 0, 0, AV_OPT_FLAG_ENCODING_PARAM, "prft"},
     { "empty_hdlr_name", "write zero-length name string in hdlr atoms within mdia and minf atoms", offsetof(MOVMuxContext, empty_hdlr_name), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
+    { "fcp", "mov file compatible with Final Cut Pro", offsetof(MOVMuxContext, compatible_fcp), AV_OPT_TYPE_BOOL, {.i64 = 0}, 0, 1, AV_OPT_FLAG_ENCODING_PARAM},
     { NULL },
 };
 
@@ -1058,6 +1059,10 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
     int ret = 0;
 
     if (track->mode == MODE_MOV) {
+        /*
+        Version 0 of the sound description format assumes uncompressed audio in 'raw ' or 'twos' format, 1 or 2 channels, 8 or 16 bits per sample, and a compression ID of 0.
+        https://developer.apple.com/library/archive/documentation/QuickTime/QTFF/QTFFChap3/qtff3.html#//apple_ref/doc/uid/TP40000939-CH205-BBCGGHJH
+        */
         if (track->timescale > UINT16_MAX || !track->par->channels) {
             if (mov_get_lpcm_flags(track->par->codec_id))
                 tag = AV_RL32("lpcm");
@@ -1066,7 +1071,8 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
                    mov_pcm_be_gt16(track->par->codec_id) ||
                    track->par->codec_id == AV_CODEC_ID_ADPCM_MS ||
                    track->par->codec_id == AV_CODEC_ID_ADPCM_IMA_WAV ||
-                   track->par->codec_id == AV_CODEC_ID_QDM2) {
+                   track->par->codec_id == AV_CODEC_ID_QDM2 ||
+                   track->par->codec_id == AV_CODEC_ID_PCM_S16LE) {
             version = 1;
         }
     }
@@ -1110,7 +1116,7 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
                 avio_wb16(pb, track->par->bits_per_coded_sample);
             else
                 avio_wb16(pb, 16);
-            avio_wb16(pb, track->audio_vbr ? -2 : 0); /* compression ID */
+            avio_wb16(pb, track->audio_vbr ? -2 : (version ? -1 : 0)); /* compression ID -1: version=1; 0: version=0*/
         } else { /* reserved for mp4/3gp */
             if (track->par->codec_id == AV_CODEC_ID_FLAC ||
                 track->par->codec_id == AV_CODEC_ID_ALAC ||
@@ -1143,7 +1149,8 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
 
     if (version == 1) { /* SoundDescription V1 extended info */
         if (mov_pcm_le_gt16(track->par->codec_id) ||
-            mov_pcm_be_gt16(track->par->codec_id))
+            mov_pcm_be_gt16(track->par->codec_id) ||
+            (track->par->codec_id == AV_CODEC_ID_PCM_S16LE))
             avio_wb32(pb, 1); /*  must be 1 for  uncompressed formats */
         else
             avio_wb32(pb, track->par->frame_size); /* Samples per packet */
@@ -2025,7 +2032,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
     }
     avio_wb16(pb, 0); /* Codec stream revision (=0) */
     if (track->mode == MODE_MOV) {
-        ffio_wfourcc(pb, "FFMP"); /* Vendor */
+        ffio_wfourcc(pb, "appl"); /* Vendor */
         if (track->par->codec_id == AV_CODEC_ID_RAWVIDEO || uncompressed_ycbcr) {
             avio_wb32(pb, 0); /* Temporal Quality */
             avio_wb32(pb, 0x400); /* Spatial Quality = lossless*/
@@ -2391,7 +2398,7 @@ static int mov_write_stts_tag(AVIOContext *pb, MOVTrack *track)
     return atom_size;
 }
 
-static int mov_write_dref_tag(AVIOContext *pb)
+static int mov_write_dref_tag(MOVMuxContext *mov, AVIOContext *pb)
 {
     avio_wb32(pb, 28); /* size */
     ffio_wfourcc(pb, "dref");
@@ -2400,7 +2407,11 @@ static int mov_write_dref_tag(AVIOContext *pb)
 
     avio_wb32(pb, 0xc); /* size */
     //FIXME add the alis and rsrc atom
-    ffio_wfourcc(pb, "url ");
+    if (mov->compatible_fcp) {
+        ffio_wfourcc(pb, "alis");
+    } else {
+        ffio_wfourcc(pb, "url ");
+    }
     avio_wb32(pb, 1); /* version & flags */
 
     return 28;
@@ -2539,12 +2550,12 @@ static int mov_write_stbl_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext
     return update_size(pb, pos);
 }
 
-static int mov_write_dinf_tag(AVIOContext *pb)
+static int mov_write_dinf_tag(MOVMuxContext *mov, AVIOContext *pb)
 {
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size */
     ffio_wfourcc(pb, "dinf");
-    mov_write_dref_tag(pb);
+    mov_write_dref_tag(mov, pb);
     return update_size(pb, pos);
 }
 
@@ -2662,7 +2673,11 @@ static int mov_write_hdlr_tag(AVFormatContext *s, AVIOContext *pb, MOVTrack *tra
     int64_t pos = avio_tell(pb);
 
     hdlr      = "dhlr";
-    hdlr_type = "url ";
+    if (mov->compatible_fcp) {
+        hdlr_type = "alis";
+    } else {
+        hdlr_type = "url ";
+    }
     descr     = "DataHandler";
 
     if (track) {
@@ -2775,7 +2790,7 @@ static int mov_write_minf_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContext
     }
     if (track->mode == MODE_MOV) /* ISO 14496-12 8.4.3.1 specifies hdlr only within mdia or meta boxes */
         mov_write_hdlr_tag(s, pb, NULL);
-    mov_write_dinf_tag(pb);
+    mov_write_dinf_tag(mov, pb);
     if ((ret = mov_write_stbl_tag(s, pb, mov, track)) < 0)
         return ret;
     return update_size(pb, pos);
@@ -3995,7 +4010,7 @@ static int mov_setup_track_ids(MOVMuxContext *mov, AVFormatContext *s)
 static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
                               AVFormatContext *s)
 {
-    int i;
+    int i, j;
     int64_t pos = avio_tell(pb);
     avio_wb32(pb, 0); /* size placeholder*/
     ffio_wfourcc(pb, "moov");
@@ -4044,6 +4059,16 @@ static int mov_write_moov_tag(AVIOContext *pb, MOVMuxContext *mov,
             mov->tracks[i].track_duration = av_rescale(mov->tracks[src_trk].track_duration,
                                                        mov->tracks[i].timescale,
                                                        mov->tracks[src_trk].timescale);
+            if (mov->compatible_fcp) {
+                for (j = 0; j < mov->nb_streams; j++) {
+                    if (mov->tracks[j].par->codec_type == AVMEDIA_TYPE_AUDIO) {
+                        if (j != src_trk) {
+                            mov->tracks[j].tref_tag = mov->tracks[i].tag;
+                            mov->tracks[j].tref_id  = mov->tracks[i].track_id;
+                        }
+                    }
+                }
+            }
         }
     }
 
@@ -5816,6 +5841,31 @@ static int mov_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     trk = &mov->tracks[pkt->stream_index];
 
+    if (0/*mov->compatible_fcp*/ &&
+        (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
+        (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
+    {
+        av_fifo_generic_write(trk->audio_grp.fifo, pkt->data, pkt->size, NULL);
+        if (av_fifo_size(trk->audio_grp.fifo) >= trk->audio_grp.size_per_second) {
+            av_fifo_generic_read(trk->audio_grp.fifo, trk->audio_grp.tmp_buf, trk->audio_grp.size_per_second, NULL);
+
+            AVPacket tmp_pkt;
+            av_init_packet(&tmp_pkt);
+            tmp_pkt.flags |= AV_PKT_FLAG_KEY;
+            tmp_pkt.data = trk->audio_grp.tmp_buf;
+            tmp_pkt.size = trk->audio_grp.size_per_second;
+            tmp_pkt.dts = trk->audio_grp.written_samples;
+            tmp_pkt.pts = trk->audio_grp.written_samples;
+            tmp_pkt.duration = trk->audio_grp.size_per_second / trk->par->channels / (trk->par->bits_per_coded_sample / 8);
+            tmp_pkt.stream_index = pkt->stream_index;
+            trk->audio_grp.written_samples += tmp_pkt.duration;
+
+            return mov_write_single_packet(s, &tmp_pkt);
+        } else {
+            return 0;
+        }
+    }
+
     if (is_cover_image(trk->st)) {
         int ret;
 
@@ -6133,6 +6183,13 @@ static void mov_free(AVFormatContext *s)
             av_freep(&mov->tracks[i].vos_data);
 
         ff_mov_cenc_free(&mov->tracks[i].cenc);
+
+        if (mov->tracks[i].audio_grp.fifo) {
+            av_fifo_freep(&(mov->tracks[i].audio_grp.fifo));
+        }
+        if (mov->tracks[i].audio_grp.tmp_buf) {
+            av_freep(&(mov->tracks[i].audio_grp.tmp_buf));
+        }
     }
 
     av_freep(&mov->tracks);
@@ -6509,6 +6566,19 @@ static int mov_init(AVFormatContext *s)
                     return AVERROR_EXPERIMENTAL;
                 }
             }
+
+            if (0/*mov->compatible_fcp*/ &&
+                (track->par->codec_id == AV_CODEC_ID_PCM_S16LE ||
+                 track->par->codec_id == AV_CODEC_ID_PCM_S16BE)) {
+                track->audio_grp.size_per_second = track->par->sample_rate * track->par->channels * (track->par->bits_per_coded_sample / 8);
+                track->audio_grp.written_samples = 0;
+                track->audio_grp.fifo = av_fifo_alloc(MOV_AUDIO_GROUP_SIZE);
+                track->audio_grp.tmp_buf = (uint8_t *)av_malloc(MOV_AUDIO_GROUP_SIZE);
+                if (!track->audio_grp.fifo || !track->audio_grp.tmp_buf) {
+                    av_log(s, AV_LOG_ERROR, "audio group memory allocation failure\n");
+                    return AVERROR(ENOMEM);
+                }
+            }
         } else if (st->codecpar->codec_type == AVMEDIA_TYPE_SUBTITLE) {
             track->timescale = st->time_base.den;
         } else if (st->codecpar->codec_type == AVMEDIA_TYPE_DATA) {
@@ -6825,6 +6895,33 @@ static int mov_write_trailer(AVFormatContext *s)
     int res = 0;
     int i;
     int64_t moov_pos;
+
+    for (i = 0; i < mov->nb_streams; i++) {
+        MOVTrack *trk = &mov->tracks[i];
+
+        if (0/*mov->compatible_fcp*/ &&
+            (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
+            (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
+        {
+            int left_size = av_fifo_size(trk->audio_grp.fifo);
+            if (left_size > 0) {
+                av_fifo_generic_read(trk->audio_grp.fifo, trk->audio_grp.tmp_buf, left_size, NULL);
+
+                AVPacket tmp_pkt;
+                av_init_packet(&tmp_pkt);
+                tmp_pkt.flags |= AV_PKT_FLAG_KEY;
+                tmp_pkt.data = trk->audio_grp.tmp_buf;
+                tmp_pkt.size = left_size;
+                tmp_pkt.dts = trk->audio_grp.written_samples;
+                tmp_pkt.pts = trk->audio_grp.written_samples;
+                tmp_pkt.duration = left_size / trk->par->channels / (trk->par->bits_per_coded_sample / 8);
+                tmp_pkt.stream_index = trk->st->index;
+                trk->audio_grp.written_samples += tmp_pkt.duration;
+
+                mov_write_single_packet(s, &tmp_pkt);
+            }
+        }
+    }
 
     if (mov->need_rewrite_extradata) {
         for (i = 0; i < s->nb_streams; i++) {

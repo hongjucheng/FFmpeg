@@ -26,6 +26,7 @@
 
 #include "avformat.h"
 #include "movenccenc.h"
+#include "libavutil/fifo.h"
 
 #define MOV_FRAG_INFO_ALLOC_INCREMENT 64
 #define MOV_INDEX_CLUSTER_SIZE 1024
@@ -80,6 +81,14 @@ typedef struct MOVFragmentInfo {
     int64_t tfrf_offset;
     int size;
 } MOVFragmentInfo;
+
+typedef struct MOVAudioGroup {
+    uint32_t size_per_second;
+    uint64_t written_samples;
+#define MOV_AUDIO_GROUP_SIZE 2304000 // 48khz 6channel floatp 2s
+    AVFifoBuffer *fifo;
+    uint8_t *tmp_buf;
+} MOVAudioGroup;
 
 typedef struct MOVTrack {
     int         mode;
@@ -164,6 +173,8 @@ typedef struct MOVTrack {
     int pal_done;
 
     int is_unaligned_qt_rgb;
+
+    MOVAudioGroup audio_grp;
 } MOVTrack;
 
 typedef enum {
@@ -235,6 +246,7 @@ typedef struct MOVMuxContext {
     int write_tmcd;
     MOVPrftBox write_prft;
     int empty_hdlr_name;
+    int compatible_fcp;
 } MOVMuxContext;
 
 #define FF_MOV_FLAG_RTP_HINT              (1 <<  0)
