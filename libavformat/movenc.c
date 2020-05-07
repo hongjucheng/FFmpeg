@@ -1072,7 +1072,7 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
                    track->par->codec_id == AV_CODEC_ID_ADPCM_MS ||
                    track->par->codec_id == AV_CODEC_ID_ADPCM_IMA_WAV ||
                    track->par->codec_id == AV_CODEC_ID_QDM2 ||
-                   track->par->codec_id == AV_CODEC_ID_PCM_S16LE) {
+                   (mov->compatible_fcp && track->par->codec_id == AV_CODEC_ID_PCM_S16LE)) {
             version = 1;
         }
     }
@@ -1116,7 +1116,7 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
                 avio_wb16(pb, track->par->bits_per_coded_sample);
             else
                 avio_wb16(pb, 16);
-            avio_wb16(pb, track->audio_vbr ? -2 : (version ? -1 : 0)); /* compression ID -1: version=1; 0: version=0*/
+            avio_wb16(pb, track->audio_vbr ? -2 : (mov->compatible_fcp ? (version ? -1 : 0) : 0)); /* compression ID -1: version=1; 0: version=0*/
         } else { /* reserved for mp4/3gp */
             if (track->par->codec_id == AV_CODEC_ID_FLAC ||
                 track->par->codec_id == AV_CODEC_ID_ALAC ||
@@ -1150,7 +1150,7 @@ static int mov_write_audio_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
     if (version == 1) { /* SoundDescription V1 extended info */
         if (mov_pcm_le_gt16(track->par->codec_id) ||
             mov_pcm_be_gt16(track->par->codec_id) ||
-            (track->par->codec_id == AV_CODEC_ID_PCM_S16LE))
+           (mov->compatible_fcp && track->par->codec_id == AV_CODEC_ID_PCM_S16LE))
             avio_wb32(pb, 1); /*  must be 1 for  uncompressed formats */
         else
             avio_wb32(pb, track->par->frame_size); /* Samples per packet */
@@ -2032,7 +2032,7 @@ static int mov_write_video_tag(AVFormatContext *s, AVIOContext *pb, MOVMuxContex
     }
     avio_wb16(pb, 0); /* Codec stream revision (=0) */
     if (track->mode == MODE_MOV) {
-        ffio_wfourcc(pb, "appl"); /* Vendor */
+        ffio_wfourcc(pb, mov->compatible_fcp ? "appl" :"FFMP"); /* Vendor */
         if (track->par->codec_id == AV_CODEC_ID_RAWVIDEO || uncompressed_ycbcr) {
             avio_wb32(pb, 0); /* Temporal Quality */
             avio_wb32(pb, 0x400); /* Spatial Quality = lossless*/
@@ -5841,7 +5841,7 @@ static int mov_write_packet(AVFormatContext *s, AVPacket *pkt)
 
     trk = &mov->tracks[pkt->stream_index];
 
-    if (0/*mov->compatible_fcp*/ &&
+    if (mov->compatible_fcp &&
         (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
         (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
     {
@@ -6184,11 +6184,14 @@ static void mov_free(AVFormatContext *s)
 
         ff_mov_cenc_free(&mov->tracks[i].cenc);
 
-        if (mov->tracks[i].audio_grp.fifo) {
-            av_fifo_freep(&(mov->tracks[i].audio_grp.fifo));
-        }
-        if (mov->tracks[i].audio_grp.tmp_buf) {
-            av_freep(&(mov->tracks[i].audio_grp.tmp_buf));
+        if (mov->compatible_fcp) {
+            if (mov->tracks[i].audio_grp.fifo) {
+                av_fifo_freep(&(mov->tracks[i].audio_grp.fifo));
+            }
+
+            if (mov->tracks[i].audio_grp.tmp_buf) {
+                av_freep(&(mov->tracks[i].audio_grp.tmp_buf));
+            }
         }
     }
 
@@ -6567,7 +6570,7 @@ static int mov_init(AVFormatContext *s)
                 }
             }
 
-            if (0/*mov->compatible_fcp*/ &&
+            if (mov->compatible_fcp &&
                 (track->par->codec_id == AV_CODEC_ID_PCM_S16LE ||
                  track->par->codec_id == AV_CODEC_ID_PCM_S16BE)) {
                 track->audio_grp.size_per_second = track->par->sample_rate * track->par->channels * (track->par->bits_per_coded_sample / 8);
@@ -6896,29 +6899,30 @@ static int mov_write_trailer(AVFormatContext *s)
     int i;
     int64_t moov_pos;
 
-    for (i = 0; i < mov->nb_streams; i++) {
-        MOVTrack *trk = &mov->tracks[i];
+    if (mov->compatible_fcp) {
+        for (i = 0; i < mov->nb_streams; i++) {
+            MOVTrack *trk = &mov->tracks[i];
 
-        if (0/*mov->compatible_fcp*/ &&
-            (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
-            (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
-        {
-            int left_size = av_fifo_size(trk->audio_grp.fifo);
-            if (left_size > 0) {
-                av_fifo_generic_read(trk->audio_grp.fifo, trk->audio_grp.tmp_buf, left_size, NULL);
+            if ((trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
+                (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
+            {
+                int left_size = av_fifo_size(trk->audio_grp.fifo);
+                if (left_size > 0) {
+                    av_fifo_generic_read(trk->audio_grp.fifo, trk->audio_grp.tmp_buf, left_size, NULL);
 
-                AVPacket tmp_pkt;
-                av_init_packet(&tmp_pkt);
-                tmp_pkt.flags |= AV_PKT_FLAG_KEY;
-                tmp_pkt.data = trk->audio_grp.tmp_buf;
-                tmp_pkt.size = left_size;
-                tmp_pkt.dts = trk->audio_grp.written_samples;
-                tmp_pkt.pts = trk->audio_grp.written_samples;
-                tmp_pkt.duration = left_size / trk->par->channels / (trk->par->bits_per_coded_sample / 8);
-                tmp_pkt.stream_index = trk->st->index;
-                trk->audio_grp.written_samples += tmp_pkt.duration;
+                    AVPacket tmp_pkt;
+                    av_init_packet(&tmp_pkt);
+                    tmp_pkt.flags |= AV_PKT_FLAG_KEY;
+                    tmp_pkt.data  = trk->audio_grp.tmp_buf;
+                    tmp_pkt.size  = left_size;
+                    tmp_pkt.dts   = trk->audio_grp.written_samples;
+                    tmp_pkt.pts   = trk->audio_grp.written_samples;
+                    tmp_pkt.duration     = left_size / trk->par->channels / (trk->par->bits_per_coded_sample / 8);
+                    tmp_pkt.stream_index = trk->st->index;
+                    trk->audio_grp.written_samples += tmp_pkt.duration;
 
-                mov_write_single_packet(s, &tmp_pkt);
+                    mov_write_single_packet(s, &tmp_pkt);
+                }
             }
         }
     }
