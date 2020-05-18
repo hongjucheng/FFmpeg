@@ -5842,8 +5842,8 @@ static int mov_write_packet(AVFormatContext *s, AVPacket *pkt)
     trk = &mov->tracks[pkt->stream_index];
 
     if (mov->compatible_fcp &&
-        (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE) ||
-        (trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
+        (trk->par->codec_id == AV_CODEC_ID_PCM_S16LE ||
+         trk->par->codec_id == AV_CODEC_ID_PCM_S16BE))
     {
         av_fifo_generic_write(trk->audio_grp.fifo, pkt->data, pkt->size, NULL);
         if (av_fifo_size(trk->audio_grp.fifo) >= trk->audio_grp.size_per_second) {
