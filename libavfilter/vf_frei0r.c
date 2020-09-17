@@ -22,7 +22,12 @@
  * frei0r wrapper
  */
 
+#ifdef WIN32
+#include <windows.h>
+#else
 #include <dlfcn.h>
+#endif
+
 #include <frei0r.h>
 #include <stdio.h>
 #include <string.h>
@@ -42,6 +47,12 @@
 #include "internal.h"
 #include "video.h"
 
+# if defined(WIN32)
+#  define FREI0R_LIB_HANDLE HMODULE
+# else
+#  define FREI0R_LIB_HANDLE void*
+# endif
+
 typedef f0r_instance_t (*f0r_construct_f)(unsigned int width, unsigned int height);
 typedef void (*f0r_destruct_f)(f0r_instance_t instance);
 typedef void (*f0r_deinit_f)(void);
@@ -56,7 +67,7 @@ typedef void (*f0r_get_param_value_f)(f0r_instance_t instance, f0r_param_t param
 typedef struct Frei0rContext {
     const AVClass *class;
     f0r_update_f update;
-    void *dl_handle;            /* dynamic library handle   */
+    FREI0R_LIB_HANDLE dl_handle;
     f0r_instance_t instance;
     f0r_plugin_info_t plugin_info;
 
@@ -77,10 +88,15 @@ typedef struct Frei0rContext {
     uint64_t pts;
 } Frei0rContext;
 
-static void *load_sym(AVFilterContext *ctx, const char *sym_name)
+static FREI0R_LIB_HANDLE load_sym(AVFilterContext *ctx, const char *sym_name)
 {
     Frei0rContext *s = ctx->priv;
-    void *sym = dlsym(s->dl_handle, sym_name);
+    FREI0R_LIB_HANDLE sym = NULL;
+#ifdef WIN32
+    sym = GetProcAddress(s->dl_handle, sym_name);
+#else
+    sym = dlsym(s->dl_handle, sym_name);
+#endif
     if (!sym)
         av_log(ctx, AV_LOG_ERROR, "Could not find symbol '%s' in loaded module.\n", sym_name);
     return sym;
@@ -170,15 +186,27 @@ static int set_params(AVFilterContext *ctx, const char *params)
     return 0;
 }
 
-static int load_path(AVFilterContext *ctx, void **handle_ptr, const char *prefix, const char *name)
+static FREI0R_LIB_HANDLE load_path(AVFilterContext *ctx, const char *prefix, const char *name)
 {
-    char *path = av_asprintf("%s%s%s", prefix, name, SLIBSUF);
+    char *path = NULL;
+#ifdef WIN32
+    path = av_asprintf("%s%s%s", prefix, name, ".dll");
+#else
+    path = av_asprintf("%s%s%s", prefix, name, ".so");
+#endif
     if (!path)
         return AVERROR(ENOMEM);
     av_log(ctx, AV_LOG_DEBUG, "Looking for frei0r effect in '%s'.\n", path);
-    *handle_ptr = dlopen(path, RTLD_NOW|RTLD_LOCAL);
+
+    FREI0R_LIB_HANDLE handle;
+#ifdef WIN32
+    handle = LoadLibrary(TEXT(path));
+#else
+    handle = dlopen(path, RTLD_NOW|RTLD_LOCAL);
+#endif
+
     av_free(path);
-    return 0;
+    return handle;
 }
 
 static av_cold int frei0r_init(AVFilterContext *ctx,
@@ -189,13 +217,16 @@ static av_cold int frei0r_init(AVFilterContext *ctx,
     f0r_get_plugin_info_f f0r_get_plugin_info;
     f0r_plugin_info_t *pi;
     char *path;
-    int ret = 0;
     int i;
     static const char* const frei0r_pathlist[] = {
+#ifdef WIN32
+        ""
+#else
         "/usr/local/lib/frei0r-1/",
         "/usr/lib/frei0r-1/",
         "/usr/local/lib64/frei0r-1/",
         "/usr/lib64/frei0r-1/"
+#endif
     };
 
     if (!dl_name) {
@@ -215,12 +246,11 @@ static av_cold int frei0r_init(AVFilterContext *ctx,
             /* add additional trailing slash in case it is missing */
             char *p1 = av_asprintf("%s/", p);
             if (!p1) {
-                ret = AVERROR(ENOMEM);
                 goto check_path_end;
             }
-            ret = load_path(ctx, &s->dl_handle, p1, dl_name);
+            s->dl_handle = load_path(ctx, p1, dl_name);
             av_free(p1);
-            if (ret < 0)
+            if (!s->dl_handle)
                 goto check_path_end;
             if (s->dl_handle)
                 break;
@@ -228,37 +258,37 @@ static av_cold int frei0r_init(AVFilterContext *ctx,
 
     check_path_end:
         av_free(path);
-        if (ret < 0)
-            return ret;
+        if (!s->dl_handle)
+            return AVERROR(EINVAL);
     }
     if (!s->dl_handle && (path = getenv("HOME"))) {
         char *prefix = av_asprintf("%s/.frei0r-1/lib/", path);
         if (!prefix)
             return AVERROR(ENOMEM);
-        ret = load_path(ctx, &s->dl_handle, prefix, dl_name);
+        s->dl_handle = load_path(ctx, prefix, dl_name);
         av_free(prefix);
-        if (ret < 0)
-            return ret;
+        if (!s->dl_handle)
+            return AVERROR(EINVAL);
     }
     for (i = 0; !s->dl_handle && i < FF_ARRAY_ELEMS(frei0r_pathlist); i++) {
-        ret = load_path(ctx, &s->dl_handle, frei0r_pathlist[i], dl_name);
-        if (ret < 0)
-            return ret;
+        s->dl_handle = load_path(ctx, frei0r_pathlist[i], dl_name);
+        if (!s->dl_handle)
+            return AVERROR(EINVAL);
     }
     if (!s->dl_handle) {
         av_log(ctx, AV_LOG_ERROR, "Could not find module '%s'.\n", dl_name);
         return AVERROR(EINVAL);
     }
 
-    if (!(f0r_init                = load_sym(ctx, "f0r_init"           )) ||
-        !(f0r_get_plugin_info     = load_sym(ctx, "f0r_get_plugin_info")) ||
-        !(s->get_param_info  = load_sym(ctx, "f0r_get_param_info" )) ||
-        !(s->get_param_value = load_sym(ctx, "f0r_get_param_value")) ||
-        !(s->set_param_value = load_sym(ctx, "f0r_set_param_value")) ||
-        !(s->update          = load_sym(ctx, "f0r_update"         )) ||
-        !(s->construct       = load_sym(ctx, "f0r_construct"      )) ||
-        !(s->destruct        = load_sym(ctx, "f0r_destruct"       )) ||
-        !(s->deinit          = load_sym(ctx, "f0r_deinit"         )))
+    if (!(f0r_init                = (f0r_init_f)load_sym(ctx, "f0r_init"           )) ||
+        !(f0r_get_plugin_info     = (f0r_get_plugin_info_f)load_sym(ctx, "f0r_get_plugin_info")) ||
+        !(s->get_param_info  = (f0r_get_param_info_f)load_sym(ctx, "f0r_get_param_info" )) ||
+        !(s->get_param_value = (f0r_get_param_value_f)load_sym(ctx, "f0r_get_param_value")) ||
+        !(s->set_param_value = (f0r_set_param_value_f)load_sym(ctx, "f0r_set_param_value")) ||
+        !(s->update          = (f0r_update_f)load_sym(ctx, "f0r_update"         )) ||
+        !(s->construct       = (f0r_construct_f)load_sym(ctx, "f0r_construct"      )) ||
+        !(s->destruct        = (f0r_destruct_f)load_sym(ctx, "f0r_destruct"       )) ||
+        !(s->deinit          = (f0r_deinit_f)load_sym(ctx, "f0r_deinit"         )))
         return AVERROR(EINVAL);
 
     if (f0r_init() < 0) {
@@ -305,8 +335,13 @@ static av_cold void uninit(AVFilterContext *ctx)
         s->destruct(s->instance);
     if (s->deinit)
         s->deinit();
-    if (s->dl_handle)
+    if (s->dl_handle) {
+#ifdef WIN32
+        FreeLibrary(s->dl_handle);
+#else
         dlclose(s->dl_handle);
+#endif
+    }
 }
 
 static int config_input_props(AVFilterLink *inlink)
