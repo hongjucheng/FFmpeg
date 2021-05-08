@@ -1903,7 +1903,8 @@ static int mov_write_colr_tag(AVIOContext *pb, MOVTrack *track, int prefer_icc)
         track->par->color_trc == AVCOL_TRC_UNSPECIFIED &&
         track->par->color_space == AVCOL_SPC_UNSPECIFIED) {
         if ((track->par->width >= 1920 && track->par->height >= 1080)
-          || (track->par->width == 1280 && track->par->height == 720)) {
+          || (track->par->width == 1280 && track->par->height == 720)
+          || (track->par->width == 960 && track->par->height == 540)) {
             av_log(NULL, AV_LOG_WARNING, "color primaries unspecified, assuming bt709\n");
             track->par->color_primaries = AVCOL_PRI_BT709;
         } else if (track->par->width == 720 && track->height == 576) {

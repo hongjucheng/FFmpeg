@@ -2154,6 +2154,12 @@ static void mov_parse_stsd_audio(MOVContext *c, AVIOContext *pb,
             avio_rb32(pb); /* bytes per packet */
             sc->bytes_per_frame = avio_rb32(pb);
             avio_rb32(pb); /* bytes per sample */
+
+            if (st->codecpar->codec_tag == MKTAG('s','o','w','t') && 1920 == sc->samples_per_frame) // ¼æÈÝÆæÝâËµajaËØ²Ä
+            {
+                sc->samples_per_frame = 0;
+                sc->bytes_per_frame   = 0;
+            }
         } else if (version == 2) {
             avio_rb32(pb); /* sizeof struct only */
             st->codecpar->sample_rate = av_int2double(avio_rb64(pb));
