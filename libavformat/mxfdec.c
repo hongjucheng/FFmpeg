@@ -3440,7 +3440,7 @@ static int mxf_read_packet(AVFormatContext *s, AVPacket *pkt)
                 break;
             max_data_size = klv.length;
             pos = klv.next_klv - klv.length;
-            PRINT_KEY(s, "read packet", klv.key);
+            //PRINT_KEY(s, "read packet", klv.key);
             av_log(s, AV_LOG_TRACE, "size %"PRIu64" offset %#"PRIx64"\n", klv.length, klv.offset);
             if (IS_KLV_KEY(klv.key, mxf_encrypted_triplet_key)) {
                 ret = mxf_decrypt_triplet(s, pkt, &klv);
